@@ -19,6 +19,32 @@ export class ElevenLabsError extends Error {
   }
 }
 
+export interface LlmOption {
+  id: string;
+  deprecated: boolean;
+  sunsetting: boolean;
+  replacement: string | null;
+  supportsParallelToolCalls: boolean;
+  maxContext: number | null;
+}
+
+interface RawLlm {
+  llm: string;
+  max_context_limit?: number;
+  supports_parallel_tool_calls?: boolean;
+  deprecation_info?: {
+    is_deprecated?: boolean;
+    is_in_warning_period?: boolean;
+    replacement_model?: string | null;
+  } | null;
+}
+
+interface RawTtsModel {
+  model_id: string;
+  name?: string;
+  can_do_text_to_speech?: boolean;
+}
+
 export interface ClientToolConfig {
   name: string;
   description: string;
@@ -71,6 +97,35 @@ export class ElevenLabsClient {
   async verifyKey(): Promise<{ ok: true; subscriptionTier?: string }> {
     const user = await this.request<{ subscription?: { tier?: string } }>('/v1/user');
     return { ok: true, subscriptionTier: user?.subscription?.tier };
+  }
+
+  /**
+   * The set of reasoning models this workspace may use. Fetched rather than
+   * hardcoded — the lineup changes often, is filtered by data residency and
+   * compliance tier, and a stale local list would offer models the account
+   * cannot actually run.
+   */
+  async listLlms(): Promise<LlmOption[]> {
+    const res = await this.request<{ llms?: RawLlm[] }>('/v1/convai/llm/list');
+    return (res?.llms ?? [])
+      .filter((l) => typeof l?.llm === 'string')
+      .map((l) => ({
+        id: l.llm,
+        deprecated: l.deprecation_info?.is_deprecated === true,
+        sunsetting: l.deprecation_info?.is_in_warning_period === true,
+        replacement: l.deprecation_info?.replacement_model ?? null,
+        supportsParallelToolCalls: l.supports_parallel_tool_calls !== false,
+        maxContext: l.max_context_limit ?? null,
+      }));
+  }
+
+  /** Text-to-speech models, same reasoning as listLlms. */
+  async listTtsModels(): Promise<Array<{ id: string; name: string }>> {
+    const res = await this.request<RawTtsModel[] | { models?: RawTtsModel[] }>('/v1/models');
+    const list = Array.isArray(res) ? res : (res?.models ?? []);
+    return list
+      .filter((m) => m?.can_do_text_to_speech !== false && typeof m?.model_id === 'string')
+      .map((m) => ({ id: m.model_id, name: m.name ?? m.model_id }));
   }
 
   async listVoices(): Promise<Array<{ voice_id: string; name: string; category?: string }>> {

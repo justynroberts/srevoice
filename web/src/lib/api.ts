@@ -143,6 +143,22 @@ export interface ProvisionReport {
   servers: ServerStatus[];
 }
 
+export interface LlmOption {
+  id: string;
+  deprecated: boolean;
+  sunsetting: boolean;
+  replacement: string | null;
+  supportsParallelToolCalls: boolean;
+  maxContext: number | null;
+}
+
+export interface SettingsOptions {
+  voices: { id: string; name: string; category?: string }[];
+  llms: LlmOption[];
+  ttsModels: { id: string; name: string }[];
+  source: 'live' | 'none';
+}
+
 export interface SessionStart {
   signedUrl: string;
   agentId: string;

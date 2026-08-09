@@ -1,12 +1,14 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tabs from '@radix-ui/react-tabs';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   api,
   getAccessToken,
   setAccessToken,
+  type LlmOption,
   type ProvisionReport,
   type ServerStatus,
+  type SettingsOptions,
   type SettingsView,
 } from '../lib/api';
 import {
@@ -16,21 +18,47 @@ import {
   toDraft,
   type DraftServer,
 } from './McpServerEditor';
-import { Button, Callout, Slider, TextArea, TextInput, Select } from './ui';
+import { Button, Callout, Combo, Slider, TextArea, TextInput, Select } from './ui';
 
-const LLM_OPTIONS = [
-  { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
-  { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (fastest)' },
-  { value: 'gpt-4o', label: 'GPT-4o' },
-  { value: 'gpt-4o-mini', label: 'GPT-4o mini' },
-  { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+/**
+ * Voices, reasoning models and TTS models all come from ElevenLabs at runtime
+ * via /api/settings/options — never hardcoded. The lists below exist only so
+ * the fields are usable before a working API key is saved, and both fields
+ * stay free text so an unlisted identifier is always enterable.
+ */
+const LLM_FALLBACK: LlmOption[] = [
+  { id: 'gemini-2.5-flash', deprecated: false, sunsetting: false, replacement: null, supportsParallelToolCalls: true, maxContext: null },
+  { id: 'gpt-4o', deprecated: false, sunsetting: false, replacement: null, supportsParallelToolCalls: true, maxContext: null },
 ];
 
-const TTS_MODELS = [
-  { value: 'eleven_flash_v2_5', label: 'Flash v2.5 — lowest latency' },
-  { value: 'eleven_turbo_v2_5', label: 'Turbo v2.5 — balanced' },
-  { value: 'eleven_multilingual_v2', label: 'Multilingual v2 — best quality' },
+const TTS_FALLBACK = [
+  { id: 'eleven_flash_v2_5', name: 'Flash v2.5' },
+  { id: 'eleven_turbo_v2_5', name: 'Turbo v2.5' },
 ];
+
+/**
+ * Warns about the two things that silently degrade a voice SRE agent: a model
+ * on its way out, and one that cannot call tools in parallel — which turns a
+ * multi-lookup question into a slow serial chain.
+ */
+function llmHint(llms: LlmOption[], selected: string): ReactNode {
+  if (llms.length === 0) return 'Runs inside ElevenLabs on their credentials — no LLM key needed. Save a working API key to load the live model list.';
+
+  const match = llms.find((m) => m.id === selected);
+  if (!match) {
+    return `Not in your account's ${llms.length} available models — ElevenLabs will reject it on provision unless it is newer than this list.`;
+  }
+  if (match.deprecated) {
+    return `Deprecated${match.replacement ? `; ElevenLabs suggests ${match.replacement}` : ''}. Pick another before it stops responding.`;
+  }
+  if (match.sunsetting) {
+    return `Being retired${match.replacement ? `; replacement is ${match.replacement}` : ''}. Still works for now.`;
+  }
+  if (!match.supportsParallelToolCalls) {
+    return 'This model cannot call tools in parallel, so multi-lookup questions run serially and feel slow out loud.';
+  }
+  return `Live from your account (${llms.length} available). Billed by ElevenLabs, no LLM key needed.`;
+}
 
 const TAB_TRIGGER =
   'rounded-lg px-3 py-1.5 text-[12px] font-medium text-ink-faint transition-colors hover:text-ink-dim data-[state=active]:bg-raised data-[state=active]:text-ink';
@@ -49,6 +77,8 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
   const [apiKey, setApiKey] = useState('');
   const [token, setToken] = useState(getAccessToken());
   const [voices, setVoices] = useState<{ id: string; name: string }[]>([]);
+  const [llms, setLlms] = useState<LlmOption[]>([]);
+  const [ttsModels, setTtsModels] = useState<{ id: string; name: string }[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -68,8 +98,10 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
       setDefaultPrompt(res.defaultSystemPrompt);
       setDrafts(res.settings.mcpServers.map(toDraft));
       if (res.settings.elevenlabs.configured) {
-        const v = await api.get<{ voices: { id: string; name: string }[] }>('/api/settings/voices');
-        setVoices(v.voices);
+        const opts = await api.get<SettingsOptions>('/api/settings/options');
+        setVoices(opts.voices);
+        setLlms(opts.llms);
+        setTtsModels(opts.ttsModels);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -317,14 +349,19 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
                     }
                     hint={voices.length ? undefined : 'Save a working API key to load your voice library.'}
                   />
-                  <Select
+                  <Combo
                     label="Model"
                     value={settings.voice.modelId}
-                    onChange={(e) =>
-                      patchSettings({ voice: { ...settings.voice, modelId: (e.target as HTMLSelectElement).value } })
+                    onChange={(e) => patchSettings({ voice: { ...settings.voice, modelId: e.target.value } })}
+                    suggestions={(ttsModels.length ? ttsModels : TTS_FALLBACK).map((m) => ({
+                      value: m.id,
+                      label: m.name,
+                    }))}
+                    hint={
+                      ttsModels.length
+                        ? 'Live from your ElevenLabs account. Flash keeps replies snappy, which matters more than timbre during an incident.'
+                        : 'Save a working API key to load the current model list.'
                     }
-                    options={TTS_MODELS}
-                    hint="Flash keeps replies snappy, which matters more than timbre during an incident."
                   />
                   <Slider
                     label="Stability"
@@ -360,14 +397,20 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
                     value={settings.agent.name}
                     onChange={(e) => patchSettings({ agent: { ...settings.agent, name: e.target.value } })}
                   />
-                  <Select
+                  <Combo
                     label="Reasoning model"
                     value={settings.agent.llm}
-                    onChange={(e) =>
-                      patchSettings({ agent: { ...settings.agent, llm: (e.target as HTMLSelectElement).value } })
-                    }
-                    options={LLM_OPTIONS}
-                    hint="Runs inside ElevenLabs. Billed by them, not by you directly."
+                    onChange={(e) => patchSettings({ agent: { ...settings.agent, llm: e.target.value } })}
+                    suggestions={(llms.length ? llms : LLM_FALLBACK).map((m) => ({
+                      value: m.id,
+                      label: [
+                        m.deprecated ? 'deprecated' : m.sunsetting ? 'sunsetting' : null,
+                        m.supportsParallelToolCalls ? null : 'no parallel tools',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || undefined,
+                    }))}
+                    hint={llmHint(llms, settings.agent.llm)}
                   />
                   <TextInput
                     label="Opening line"

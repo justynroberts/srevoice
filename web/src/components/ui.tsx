@@ -42,6 +42,36 @@ export function TextInput({
   );
 }
 
+/**
+ * Free-text field with suggestions. Used where a fixed dropdown would be a
+ * liability — ElevenLabs' model lineup moves faster than this app ships, and a
+ * stale hardcoded list would strand the operator on a value their account
+ * rejects.
+ */
+export function Combo({
+  label,
+  hint,
+  suggestions,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & {
+  label: string;
+  hint?: ReactNode;
+  suggestions: { value: string; label?: string }[];
+}) {
+  const id = useId();
+  const listId = `${id}-options`;
+  return (
+    <Field label={label} hint={hint} htmlFor={id}>
+      <input id={id} list={listId} autoComplete="off" {...props} className={`${INPUT_BASE} font-mono-tight`} />
+      <datalist id={listId}>
+        {suggestions.map((s) => (
+          <option key={s.value} value={s.value} label={s.label} />
+        ))}
+      </datalist>
+    </Field>
+  );
+}
+
 export function TextArea({
   label,
   hint,

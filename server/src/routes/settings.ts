@@ -111,16 +111,42 @@ export const settingsRoutes = (ctx: AppContext): FastifyPluginAsync =>
       }
     });
 
-    /** Voice picker data. Fails soft — an empty list still lets the page render. */
-    app.get('/api/settings/voices', async () => {
+    /**
+     * Everything the settings pickers offer, read live from ElevenLabs rather
+     * than hardcoded: voices, reasoning models, TTS models. The lineup shifts
+     * and is filtered per workspace by region and compliance tier, so a local
+     * list would offer options the account cannot actually use.
+     *
+     * Each list fails soft and independently — one unavailable endpoint must
+     * not blank the whole settings page.
+     */
+    app.get('/api/settings/options', async () => {
       const settings = await ctx.store.load();
-      if (!settings.elevenlabsApiKey) return { voices: [] };
-      try {
-        const voices = await new ElevenLabsClient(settings.elevenlabsApiKey).listVoices();
-        return { voices: voices.map((v) => ({ id: v.voice_id, name: v.name, category: v.category })) };
-      } catch (err) {
-        logger.warn({ err: (err as Error).message }, 'Could not list ElevenLabs voices');
-        return { voices: [] };
+      if (!settings.elevenlabsApiKey) {
+        return { voices: [], llms: [], ttsModels: [], source: 'none' as const };
       }
+
+      const client = new ElevenLabsClient(settings.elevenlabsApiKey);
+      const soft = async <T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
+        try {
+          return await fn();
+        } catch (err) {
+          logger.warn({ err: (err as Error).message, label }, 'Could not load ElevenLabs options');
+          return fallback;
+        }
+      };
+
+      const [voices, llms, ttsModels] = await Promise.all([
+        soft('voices', () => client.listVoices(), []),
+        soft('llms', () => client.listLlms(), []),
+        soft('tts-models', () => client.listTtsModels(), []),
+      ]);
+
+      return {
+        voices: voices.map((v) => ({ id: v.voice_id, name: v.name, category: v.category })),
+        llms,
+        ttsModels,
+        source: 'live' as const,
+      };
     });
   };
