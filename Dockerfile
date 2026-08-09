@@ -8,9 +8,11 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY server/package.json ./server/
 COPY web/package.json ./web/
-RUN npm ci --no-audit --no-fund
+# --include=dev is explicit so the build never depends on ambient NODE_ENV —
+# Coolify injects env vars as build ARGs, and a production value there would
+# strip tsc and vite out of the install.
+RUN npm ci --include=dev --no-audit --no-fund
 
-COPY tsconfig.base.json* ./
 COPY server ./server
 COPY web ./web
 RUN npm run build
