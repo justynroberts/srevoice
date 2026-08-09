@@ -184,8 +184,39 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
             </Dialog.Close>
           </div>
 
-          {loading || !settings ? (
+          {loading ? (
             <div className="flex flex-1 items-center justify-center text-[13px] text-ink-faint">Loading…</div>
+          ) : !settings ? (
+            /*
+              Settings could not be read — almost always a missing access token.
+              This is the one screen that must work without one, or there is no
+              way to supply it.
+            */
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
+              {error && <Callout tone="error">{error}</Callout>}
+              <TextInput
+                label="Access token"
+                type="password"
+                mono
+                autoComplete="off"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder="matches SREVOICE_ACCESS_TOKEN"
+                hint="Set by the server operator. Stored in this browser only."
+              />
+              <div>
+                <Button
+                  tone="primary"
+                  onClick={() => {
+                    setAccessToken(token.trim());
+                    void load();
+                    onChanged();
+                  }}
+                >
+                  Unlock console
+                </Button>
+              </div>
+            </div>
           ) : (
             <Tabs.Root defaultValue="connections" className="flex min-h-0 flex-1 flex-col">
               <Tabs.List className="flex gap-1 border-b border-line px-4 py-2">

@@ -48,7 +48,7 @@ export function Console({ tools, statuses, onOpenSettings }: Props) {
     clear,
     sendText,
     dismissProblem,
-  } = useSreConversation(tools);
+  } = useSreConversation();
 
   const [draft, setDraft] = useState('');
   const live = phase === 'live';
@@ -71,7 +71,7 @@ export function Console({ tools, statuses, onOpenSettings }: Props) {
         </div>
 
         <div className="flex items-center gap-2">
-          {live && setMuted && (
+          {live && (
             <Button tone="ghost" onClick={() => setMuted(!isMuted)} className="px-2.5 py-1.5 text-[12px]">
               {isMuted ? 'Unmute' : 'Mute'}
             </Button>

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Console } from './components/Console';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Button, Callout } from './components/ui';
+import { SreConversationProvider } from './hooks/useSreConversation';
 import { api, ApiError, type CatalogueTool, type ServerStatus } from './lib/api';
 
 interface Bootstrap {
@@ -13,6 +14,11 @@ export default function App() {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [error, setError] = useState<{ message: string; unauthorised: boolean } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // A 401 on first load means no token has been pasted yet. Opening Settings
+  // unprompted is the whole remedy, so do it once rather than making the
+  // operator find the gear behind an error banner.
+  const promptedForToken = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -26,12 +32,16 @@ export default function App() {
       const unauthorised = err instanceof ApiError && err.status === 401;
       setError({
         message: unauthorised
-          ? 'This console needs an access token. Add it in Settings.'
+          ? 'This console needs an access token. Add it under Settings → Connections.'
           : err instanceof Error
             ? err.message
             : String(err),
         unauthorised,
       });
+      if (unauthorised && !promptedForToken.current) {
+        promptedForToken.current = true;
+        setSettingsOpen(true);
+      }
       // Without a catalogue there are no client tools to register, so the voice
       // session stays unavailable until this resolves.
       setBoot({ tools: [], statuses: [] });
@@ -82,16 +92,17 @@ export default function App() {
 
       <div className="min-h-0 flex-1">
         {/*
-          Remounted when the tool list changes: the ElevenLabs hook binds its
-          client-tool handlers at construction, so a stale set would silently
-          drop calls for newly provisioned tools.
+          Remounted when the tool list changes: ConversationProvider takes
+          clientTools at construction, so a stale set would silently drop calls
+          for newly provisioned tools.
         */}
-        <Console
-          key={boot.tools.join('|')}
-          tools={boot.tools}
-          statuses={boot.statuses}
-          onOpenSettings={() => setSettingsOpen(true)}
-        />
+        <SreConversationProvider key={boot.tools.join('|')} toolNames={boot.tools}>
+          <Console
+            tools={boot.tools}
+            statuses={boot.statuses}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+        </SreConversationProvider>
       </div>
 
       <SettingsPanel

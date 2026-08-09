@@ -1,0 +1,248 @@
+import { ConversationProvider, useConversation } from '@elevenlabs/react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { api, ApiError, type SessionStart, type ToolCallResponse } from '../lib/api';
+
+export interface Turn {
+  id: string;
+  role: 'user' | 'agent' | 'system';
+  text: string;
+  at: number;
+}
+
+export interface ToolCall {
+  id: string;
+  tool: string;
+  args: Record<string, unknown>;
+  status: 'running' | 'ok' | 'error';
+  result?: ToolCallResponse;
+  error?: string;
+  startedAt: number;
+  durationMs?: number;
+}
+
+export type SessionPhase = 'idle' | 'requesting-mic' | 'connecting' | 'live' | 'ending';
+
+export interface SessionProblem {
+  message: string;
+  needs: 'apiKey' | 'provision' | 'mic' | null;
+}
+
+let seq = 0;
+const nextId = (prefix: string): string => `${prefix}-${Date.now().toString(36)}-${seq++}`;
+
+interface SreState {
+  turns: Turn[];
+  toolCalls: ToolCall[];
+  phase: SessionPhase;
+  problem: SessionProblem | null;
+  setPhase: (p: SessionPhase) => void;
+  setProblem: (p: SessionProblem | null) => void;
+  addTurn: (role: Turn['role'], text: string) => void;
+  clear: () => void;
+}
+
+const SreStateContext = createContext<SreState | null>(null);
+
+/**
+ * Wraps ElevenLabs' `ConversationProvider` and owns everything the session
+ * produces — the transcript and the tool calls behind it.
+ *
+ * The provider has to sit above any component calling `useConversation`, and
+ * it needs `clientTools` at construction, which is why the tool handlers and
+ * the state they write to live here rather than in the consuming component.
+ */
+export function SreConversationProvider({
+  toolNames,
+  children,
+}: {
+  toolNames: string[];
+  children: ReactNode;
+}) {
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
+  const [phase, setPhase] = useState<SessionPhase>('idle');
+  const [problem, setProblem] = useState<SessionProblem | null>(null);
+
+  const addTurn = useCallback((role: Turn['role'], text: string) => {
+    const clean = text?.trim();
+    if (!clean) return;
+    setTurns((prev) => {
+      const last = prev[prev.length - 1];
+      // Partial transcripts arrive as the same turn, growing. Collapse them or
+      // the log stutters one fragment at a time.
+      if (last && last.role === role && clean.startsWith(last.text) && clean !== last.text) {
+        return [...prev.slice(0, -1), { ...last, text: clean }];
+      }
+      if (last && last.role === role && last.text === clean) return prev;
+      return [...prev, { id: nextId('turn'), role, text: clean, at: Date.now() }];
+    });
+  }, []);
+
+  const runTool = useCallback(async (tool: string, params: Record<string, unknown>): Promise<string> => {
+    const callId = nextId('call');
+    setToolCalls((prev) => [
+      ...prev,
+      { id: callId, tool, args: params ?? {}, status: 'running', startedAt: Date.now() },
+    ]);
+
+    try {
+      const result = await api.post<ToolCallResponse>('/api/mcp/call', {
+        tool,
+        args: params ?? {},
+        callId,
+      });
+      setToolCalls((prev) =>
+        prev.map((c) =>
+          c.id === callId
+            ? {
+                ...c,
+                status: result.ok ? 'ok' : 'error',
+                result,
+                durationMs: result.durationMs,
+                error: result.ok ? undefined : result.speech,
+              }
+            : c,
+        ),
+      );
+      return result.speech;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setToolCalls((prev) =>
+        prev.map((c) =>
+          c.id === callId ? { ...c, status: 'error', error: message, durationMs: Date.now() - c.startedAt } : c,
+        ),
+      );
+      // Returned rather than thrown: the agent should say what failed, not have
+      // the tool call vanish.
+      return `The ${tool} call could not be completed: ${message}`;
+    }
+  }, []);
+
+  const clientTools = useMemo(() => {
+    const handlers: Record<string, (params: Record<string, unknown>) => Promise<string>> = {};
+    for (const name of toolNames) handlers[name] = (params) => runTool(name, params);
+    return handlers;
+  }, [toolNames, runTool]);
+
+  const state = useMemo<SreState>(
+    () => ({
+      turns,
+      toolCalls,
+      phase,
+      problem,
+      setPhase,
+      setProblem,
+      addTurn,
+      clear: () => {
+        setTurns([]);
+        setToolCalls([]);
+      },
+    }),
+    [turns, toolCalls, phase, problem, addTurn],
+  );
+
+  return (
+    <ConversationProvider
+      clientTools={clientTools}
+      onConnect={() => {
+        setPhase('live');
+        setProblem(null);
+      }}
+      onDisconnect={() => setPhase('idle')}
+      onError={(message: string) => {
+        setProblem({ message: message || 'Voice connection error', needs: null });
+        setPhase('idle');
+      }}
+      onMessage={({ message, role, source }) => {
+        // `role` supersedes the deprecated `source`; both are present today.
+        const speaker = role ?? source;
+        addTurn(speaker === 'user' ? 'user' : 'agent', message);
+      }}
+    >
+      <SreStateContext.Provider value={state}>{children}</SreStateContext.Provider>
+    </ConversationProvider>
+  );
+}
+
+/** Must be called inside `SreConversationProvider`. */
+export function useSreConversation() {
+  const state = useContext(SreStateContext);
+  if (!state) throw new Error('useSreConversation must be used within SreConversationProvider');
+
+  const conversation = useConversation();
+  const { setPhase, setProblem, addTurn, phase } = state;
+  const startingRef = useRef(false);
+
+  const start = useCallback(async () => {
+    if (startingRef.current) return;
+    startingRef.current = true;
+    setProblem(null);
+    setPhase('requesting-mic');
+
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setPhase('idle');
+      setProblem({
+        message: 'Microphone access was blocked. Allow it in your browser, then start again.',
+        needs: 'mic',
+      });
+      startingRef.current = false;
+      return;
+    }
+
+    setPhase('connecting');
+    try {
+      const session = await api.post<SessionStart>('/api/session/start');
+      // Synchronous: failures after this point surface through onError, and
+      // onConnect is what moves the phase to 'live'.
+      conversation.startSession({ signedUrl: session.signedUrl });
+    } catch (err) {
+      setPhase('idle');
+      if (err instanceof ApiError) setProblem({ message: err.message, needs: err.needs });
+      else setProblem({ message: err instanceof Error ? err.message : String(err), needs: null });
+    } finally {
+      startingRef.current = false;
+    }
+  }, [conversation, setPhase, setProblem]);
+
+  const stop = useCallback(() => {
+    setPhase('ending');
+    conversation.endSession();
+    setPhase('idle');
+  }, [conversation, setPhase]);
+
+  const sendText = useCallback(
+    (text: string) => {
+      const clean = text.trim();
+      if (!clean || phase !== 'live') return;
+      conversation.sendUserMessage(clean);
+      addTurn('user', clean);
+    },
+    [conversation, phase, addTurn],
+  );
+
+  return {
+    turns: state.turns,
+    toolCalls: state.toolCalls,
+    phase: state.phase,
+    problem: state.problem,
+    isSpeaking: conversation.isSpeaking,
+    status: conversation.status,
+    isMuted: conversation.isMuted,
+    setMuted: conversation.setMuted,
+    start,
+    stop,
+    clear: state.clear,
+    sendText,
+    dismissProblem: () => setProblem(null),
+  };
+}
