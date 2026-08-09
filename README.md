@@ -79,6 +79,12 @@ Single container. The API serves the built SPA from its own origin, so there is 
 
 On Coolify: mount a persistent volume at `/data`, set `SREVOICE_MASTER_KEY` and `SREVOICE_ACCESS_TOKEN`, expose port `5280`. Health check is `GET /api/health`. HTTPS is not optional — microphone access requires a secure context.
 
+Set the healthcheck **host** to `127.0.0.1`, not `localhost`. Fastify's `0.0.0.0` bind is IPv4-only, alpine resolves `localhost` to `::1` first, and the probe comes back `Connection refused` while the app is serving perfectly — which fails the deploy and rolls it back.
+
+Do not set `NODE_ENV` as a platform env var. The Dockerfile already sets it in the runtime stage, and Coolify injects env vars into the build as `ARG`s, where a production value strips `tsc` and `vite` out of the install.
+
+Live at <https://sre.apps.fintonlabs.com>.
+
 ## Layout
 
 ```
