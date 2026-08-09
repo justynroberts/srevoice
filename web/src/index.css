@@ -1,0 +1,111 @@
+@import 'tailwindcss';
+
+/*
+ * Uber-dark surface ladder with a single green accent. Everything else is
+ * neutral so status colour always means status, never decoration.
+ */
+@theme {
+  --color-void: #0a0a0b;
+  --color-surface: #131315;
+  --color-raised: #1b1b1f;
+  --color-hover: #232328;
+  --color-line: #2c2c33;
+  --color-line-strong: #3a3a43;
+
+  --color-ink: #f5f5f7;
+  --color-ink-dim: #a1a1ab;
+  --color-ink-faint: #6b6b76;
+
+  --color-accent: #06d6a0;
+  --color-accent-dim: #04a97e;
+  --color-accent-glow: #06d6a026;
+
+  --color-critical: #ff4d4f;
+  --color-warn: #ffb020;
+  --color-info: #4d9fff;
+  --color-ok: #06d6a0;
+
+  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Spline Sans Mono', ui-monospace, 'SF Mono', monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-void);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior: none;
+  }
+
+  ::selection {
+    background: var(--color-accent-glow);
+    color: var(--color-ink);
+  }
+
+  /* Scrollbars that read as part of the surface rather than the OS. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-line-strong);
+    background-clip: content-box;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@layer utilities {
+  .font-mono-tight {
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+    letter-spacing: -0.01em;
+  }
+
+  .surface-card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: 0.875rem;
+  }
+
+  /* Long transcripts fade into the top edge instead of hard-clipping. */
+  .mask-fade-top {
+    mask-image: linear-gradient(to bottom, transparent, black 3rem);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 3rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

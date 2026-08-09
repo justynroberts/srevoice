@@ -1,0 +1,32 @@
+{
+  "name": "srevoice",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Voice-native SRE console — natural language conversation with PagerDuty MCP servers, on screen and out loud",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c green,cyan \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev --workspace server",
+    "dev:web": "npm run dev --workspace web",
+    "build": "npm run build --workspace server && npm run build --workspace web",
+    "start": "node server/dist/index.js",
+    "test": "npm run test --workspace server",
+    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace web",
+    "lint": "eslint server/src web/src --ext .ts,.tsx",
+    "docker:build": "docker build -t srevoice:local .",
+    "docker:up": "docker compose up --build"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.20.0",
+    "@typescript-eslint/parser": "^8.20.0",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.18.0",
+    "typescript": "^5.7.3"
+  }
+}
