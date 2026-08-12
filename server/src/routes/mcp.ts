@@ -2,12 +2,19 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { logger } from '../logger.js';
-import { renderToolResult } from '../mcp/render.js';
+import { renderToolResult, type RenderedResult } from '../mcp/render.js';
+import { MEMORY_TOOLS, runMemoryTool, isMemoryTool } from '../memory/tools.js';
+
+/**
+ * How long the browser waits before answering the agent with "still working".
+ * Comfortably inside ElevenLabs' 120s client-tool ceiling, and short enough
+ * that she does not sit mute while a slow query runs.
+ */
+const SOFT_BUDGET_MS = 20_000;
 
 const callBody = z.object({
   tool: z.string().min(1).max(128),
   args: z.record(z.unknown()).default({}),
-  /** Correlates a call with a turn in the transcript for the UI. */
   callId: z.string().max(128).optional(),
 });
 
@@ -15,17 +22,28 @@ export const mcpRoutes = (ctx: AppContext): FastifyPluginAsync =>
   async (app) => {
     app.get('/api/mcp/status', async () => ({
       servers: ctx.pool.status(),
-      toolCount: ctx.pool.catalogue().length,
+      toolCount: ctx.pool.catalogue().length + MEMORY_TOOLS.length,
     }));
 
     app.get('/api/mcp/catalogue', async () => ({
-      tools: ctx.pool.catalogue().map((t) => ({
-        name: t.qualifiedName,
-        server: t.serverLabel,
-        serverId: t.serverId,
-        description: t.description,
-        inputSchema: t.inputSchema,
-      })),
+      tools: [
+        ...ctx.pool.catalogue().map((t) => ({
+          name: t.qualifiedName,
+          server: t.serverLabel,
+          serverId: t.serverId,
+          description: t.description,
+          inputSchema: t.inputSchema,
+        })),
+        // Memory is presented as ordinary tools so provisioning, the browser
+        // handler and the catalogue all treat it like any other capability.
+        ...MEMORY_TOOLS.map((t) => ({
+          name: t.name,
+          server: 'Memory',
+          serverId: 'memory',
+          description: t.description,
+          inputSchema: t.inputSchema,
+        })),
+      ],
     }));
 
     app.post('/api/mcp/reconnect', async (req, reply) => {
@@ -46,53 +64,111 @@ export const mcpRoutes = (ctx: AppContext): FastifyPluginAsync =>
     });
 
     /**
-     * The bridge the voice agent's client tools call through. Returns both the
-     * short text the agent speaks from and the full payload the screen renders,
-     * so one round trip feeds both output channels.
+     * The bridge the voice agent's client tools call through.
      *
-     * Tool failures deliberately return 200 with `isError`. A 4xx/5xx here
-     * would surface to the agent as a broken tool rather than as a result it
-     * can reason about and explain out loud.
+     * A call that finishes inside the soft budget answers normally. One that
+     * does not returns `pending`, keeps running server-side, and is collected
+     * afterwards from /api/mcp/pending — so an interruption, or a query that
+     * simply takes minutes, no longer throws the answer away.
+     *
+     * Failures deliberately return 200 with `ok: false`: a 4xx would surface to
+     * the agent as a broken tool rather than a result she can explain out loud.
      */
     app.post('/api/mcp/call', async (req, reply) => {
       const parsed = callBody.safeParse(req.body);
       if (!parsed.success) {
         return reply.code(400).send({ error: 'Invalid tool call', issues: parsed.error.issues });
       }
-      const { tool, args, callId } = parsed.data;
+      const { tool, args } = parsed.data;
+      const callId = parsed.data.callId ?? `call-${Date.now()}`;
       const startedAt = Date.now();
 
-      try {
-        const raw = await ctx.pool.call(tool, args);
-        const rendered = renderToolResult(raw);
-        const durationMs = Date.now() - startedAt;
+      const work: Promise<RenderedResult> = isMemoryTool(tool)
+        ? runMemoryTool(ctx.memory, tool, args)
+        : ctx.pool.call(tool, args).then(renderToolResult);
 
-        logger.info({ tool, durationMs, isError: rendered.isError }, 'MCP tool call complete');
+      // Register before racing, so a call that outruns the budget is already
+      // tracked and nothing depends on this request surviving.
+      ctx.pending.track(callId, tool, args, work);
+
+      const outcome = await Promise.race([
+        work.then((r) => ({ done: true as const, r })).catch((e: unknown) => ({ done: true as const, e })),
+        new Promise<{ done: false }>((resolve) => setTimeout(() => resolve({ done: false }), SOFT_BUDGET_MS)),
+      ]);
+
+      if (!outcome.done) {
+        logger.info({ tool, callId }, 'Tool call exceeded the soft budget — answering as pending');
         return {
           callId,
           tool,
           args,
-          ok: !rendered.isError,
-          speech: rendered.speech,
-          display: rendered.display,
-          truncated: rendered.truncated,
-          durationMs,
+          ok: true,
+          pending: true,
+          speech:
+            `Still working on ${tool}. It is taking longer than usual — I will tell you the moment it lands, ` +
+            `so carry on and I will interrupt with the answer.`,
+          display: null,
+          truncated: false,
+          durationMs: Date.now() - startedAt,
         };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        const durationMs = Date.now() - startedAt;
-        logger.error({ tool, err: message, durationMs }, 'MCP tool call failed');
+      }
 
+      // Answered within the turn — the agent already has it.
+      ctx.pending.markAnsweredInline(callId);
+
+      if ('e' in outcome) {
+        const message = outcome.e instanceof Error ? outcome.e.message : String(outcome.e);
+        logger.error({ tool, err: message }, 'MCP tool call failed');
         return {
           callId,
           tool,
           args,
           ok: false,
+          pending: false,
           speech: `The ${tool} tool failed: ${message}`,
           display: { error: message },
           truncated: false,
-          durationMs,
+          durationMs: Date.now() - startedAt,
         };
       }
+
+      const rendered = outcome.r;
+      logger.info({ tool, durationMs: Date.now() - startedAt, isError: rendered.isError }, 'MCP tool call complete');
+      return {
+        callId,
+        tool,
+        args,
+        ok: !rendered.isError,
+        pending: false,
+        speech: rendered.speech,
+        display: rendered.display,
+        truncated: rendered.truncated,
+        durationMs: Date.now() - startedAt,
+      };
+    });
+
+    /**
+     * Results of calls that outran their turn. The browser polls this while a
+     * session is live and feeds anything it finds back as a contextual update.
+     */
+    app.get('/api/mcp/pending', async () => {
+      const settled = ctx.pending.collectSettled();
+      return {
+        outstanding: ctx.pending.outstanding().map((c) => ({
+          callId: c.callId,
+          tool: c.tool,
+          waitingMs: Date.now() - c.startedAt,
+        })),
+        settled: settled.map((c) => ({
+          callId: c.callId,
+          tool: c.tool,
+          args: c.args,
+          ok: !c.error && !c.result?.isError,
+          speech: c.error ? `The ${c.tool} tool failed: ${c.error}` : (c.result?.speech ?? ''),
+          display: c.error ? { error: c.error } : c.result?.display,
+          truncated: c.result?.truncated ?? false,
+          durationMs: c.result?.durationMs ?? 0,
+        })),
+      };
     });
   };

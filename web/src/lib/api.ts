@@ -90,6 +90,7 @@ export const api = {
     request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }),
   put: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
+  del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
 
 // ---- Wire types ------------------------------------------------------------
@@ -157,6 +158,8 @@ export interface ToolCallResponse {
   tool: string;
   args: Record<string, unknown>;
   ok: boolean;
+  /** Still running server-side; the result arrives via /api/mcp/pending. */
+  pending?: boolean;
   speech: string;
   display: unknown;
   truncated: boolean;
@@ -198,6 +201,20 @@ export interface SettingsOptions {
   llms: LlmOption[];
   ttsModels: { id: string; name: string }[];
   source: 'live' | 'none';
+}
+
+export interface PendingPoll {
+  outstanding: { callId: string; tool: string; waitingMs: number }[];
+  settled: ToolCallResponse[];
+}
+
+export interface MemoryNote {
+  id: string;
+  text: string;
+  tag?: string;
+  createdAt: string;
+  usedAt?: string;
+  pinned: boolean;
 }
 
 export interface SessionStart {

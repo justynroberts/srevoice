@@ -9,7 +9,13 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { api, ApiError, type SessionStart, type ToolCallResponse } from '../lib/api';
+import {
+  api,
+  ApiError,
+  type PendingPoll,
+  type SessionStart,
+  type ToolCallResponse,
+} from '../lib/api';
 
 export interface Turn {
   id: string;
@@ -22,7 +28,7 @@ export interface ToolCall {
   id: string;
   tool: string;
   args: Record<string, unknown>;
-  status: 'running' | 'ok' | 'error';
+  status: 'running' | 'pending' | 'ok' | 'error';
   result?: ToolCallResponse;
   error?: string;
   startedAt: number;
@@ -52,6 +58,7 @@ interface SreState {
   setProblem: (p: SessionProblem | null) => void;
   setAwaitingReply: (v: boolean) => void;
   addTurn: (role: Turn['role'], text: string) => void;
+  settlePending: (result: ToolCallResponse) => void;
   clear: () => void;
 }
 
@@ -111,10 +118,12 @@ export function SreConversationProvider({
           c.id === callId
             ? {
                 ...c,
-                status: result.ok ? 'ok' : 'error',
-                result,
-                durationMs: result.durationMs,
-                error: result.ok ? undefined : result.speech,
+                // A pending call is still running server-side; its real result
+                // arrives later through the pending poll.
+                status: result.pending ? 'pending' : result.ok ? 'ok' : 'error',
+                result: result.pending ? undefined : result,
+                durationMs: result.pending ? undefined : result.durationMs,
+                error: result.pending || result.ok ? undefined : result.speech,
               }
             : c,
         ),
@@ -131,6 +140,26 @@ export function SreConversationProvider({
       // the tool call vanish.
       return `The ${tool} call could not be completed: ${message}`;
     }
+  }, []);
+
+  /**
+   * A call that outran its turn finishing later. Matched by callId so the card
+   * that was left spinning is the one that updates.
+   */
+  const settlePending = useCallback((result: ToolCallResponse) => {
+    setToolCalls((prev) =>
+      prev.map((c) =>
+        c.id === result.callId
+          ? {
+              ...c,
+              status: result.ok ? 'ok' : 'error',
+              result,
+              durationMs: result.durationMs,
+              error: result.ok ? undefined : result.speech,
+            }
+          : c,
+      ),
+    );
   }, []);
 
   const clientTools = useMemo(() => {
@@ -150,13 +179,14 @@ export function SreConversationProvider({
       setProblem,
       setAwaitingReply,
       addTurn,
+      settlePending,
       clear: () => {
         setTurns([]);
         setToolCalls([]);
         setAwaitingReply(false);
       },
     }),
-    [turns, toolCalls, phase, problem, awaitingReply, addTurn],
+    [turns, toolCalls, phase, problem, awaitingReply, addTurn, settlePending],
   );
 
   return (
@@ -195,8 +225,47 @@ export function useSreConversation() {
   if (!state) throw new Error('useSreConversation must be used within SreConversationProvider');
 
   const conversation = useConversation();
-  const { setPhase, setProblem, setAwaitingReply, addTurn, phase } = state;
+  const { setPhase, setProblem, setAwaitingReply, addTurn, settlePending, phase } = state;
   const startingRef = useRef(false);
+
+  /**
+   * Results that outran their turn.
+   *
+   * ElevenLabs abandons a client tool after two minutes, and an engineer
+   * talking over her ends the turn sooner than that — but the query is still
+   * running and its answer is still wanted. Polling here is independent of the
+   * conversation, so an interruption no longer throws the work away: whatever
+   * lands is handed back as a contextual update, which she can weave in without
+   * being asked again.
+   */
+  useEffect(() => {
+    if (phase !== 'live') return undefined;
+
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const poll = await api.get<PendingPoll>('/api/mcp/pending');
+        if (cancelled) return;
+        for (const settled of poll.settled) {
+          settlePending(settled);
+          const preamble = settled.ok
+            ? `The ${settled.tool} lookup you started earlier has finished. Tell the engineer now, briefly, even if the conversation has moved on — say what it was about first so they can place it.`
+            : `The ${settled.tool} lookup you started earlier failed. Mention it briefly.`;
+          conversation.sendContextualUpdate(`${preamble}\n\n${settled.speech}`);
+          addTurn('system', `Late result: ${settled.tool}`);
+        }
+      } catch {
+        // A failed poll is not worth surfacing — the next tick retries, and the
+        // session is unaffected.
+      }
+    };
+
+    const interval = setInterval(() => void tick(), 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [phase, conversation, settlePending, addTurn]);
 
   const toolRunning = state.toolCalls.some((c) => c.status === 'running');
 
@@ -236,10 +305,27 @@ export function useSreConversation() {
 
     setPhase('connecting');
     try {
-      const session = await api.post<SessionStart>('/api/session/start');
+      const [session, briefing] = await Promise.all([
+        api.post<SessionStart>('/api/session/start'),
+        // Best-effort: no memory is not a reason to fail the session.
+        api.get<{ text: string }>('/api/memory/briefing').catch(() => ({ text: '' })),
+      ]);
+
       // Synchronous: failures after this point surface through onError, and
       // onConnect is what moves the phase to 'live'.
       conversation.startSession({ signedUrl: session.signedUrl });
+
+      // Sent as context rather than baked into the prompt at provision time, so
+      // something learned an hour ago is available without re-provisioning.
+      if (briefing.text) {
+        setTimeout(() => {
+          try {
+            conversation.sendContextualUpdate(briefing.text);
+          } catch {
+            // The session ended before the socket was ready — nothing to do.
+          }
+        }, 1200);
+      }
     } catch (err) {
       setPhase('idle');
       if (err instanceof ApiError) setProblem({ message: err.message, needs: err.needs });

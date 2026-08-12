@@ -9,6 +9,7 @@ import {
   type ProvisionReport,
   type ServerStatus,
   type SettingsOptions,
+  type MemoryNote,
   type SettingsView,
   type VoiceOption,
 } from '../lib/api';
@@ -89,6 +90,8 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
   const [voices, setVoices] = useState<VoiceOption[]>([]);
   const [llms, setLlms] = useState<LlmOption[]>([]);
   const [ttsModels, setTtsModels] = useState<{ id: string; name: string }[]>([]);
+  const [notes, setNotes] = useState<MemoryNote[]>([]);
+  const [newNote, setNewNote] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -107,6 +110,8 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
       setSettings(res.settings);
       setDefaultPrompt(res.defaultSystemPrompt);
       setDrafts(res.settings.mcpServers.map(toDraft));
+      // Memory is independent of the ElevenLabs key, so load it either way.
+      void api.get<{ notes: MemoryNote[] }>('/api/memory').then((m) => setNotes(m.notes)).catch(() => {});
       if (res.settings.elevenlabs.configured) {
         const opts = await api.get<SettingsOptions>('/api/settings/options');
         setVoices(opts.voices);
@@ -208,6 +213,47 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
     }
   };
 
+  const addNote = async () => {
+    const text = newNote.trim();
+    if (!text) return;
+    try {
+      const res = await api.post<{ notes: MemoryNote[] }>('/api/memory', { text });
+      setNotes(res.notes);
+      setNewNote('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const pinNote = async (note: MemoryNote) => {
+    try {
+      const res = await api.post<{ notes: MemoryNote[] }>(`/api/memory/${note.id}/pin`, {
+        pinned: !note.pinned,
+      });
+      setNotes(res.notes);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const deleteNote = async (id: string) => {
+    try {
+      const res = await api.del<{ notes: MemoryNote[] }>(`/api/memory/${id}`);
+      setNotes(res.notes);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const clearNotes = async () => {
+    try {
+      const res = await api.del<{ notes: MemoryNote[] }>('/api/memory');
+      setNotes(res.notes);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const statusFor = (id: string) => statuses.find((s) => s.id === id);
 
   return (
@@ -273,6 +319,10 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
                 </Tabs.Trigger>
                 <Tabs.Trigger value="agent" className={TAB_TRIGGER}>
                   Agent
+                </Tabs.Trigger>
+                <Tabs.Trigger value="memory" className={TAB_TRIGGER}>
+                  Memory
+                  {notes.length > 0 && <span className="ml-1.5 opacity-60">{notes.length}</span>}
                 </Tabs.Trigger>
               </Tabs.List>
 
@@ -467,6 +517,84 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
                   >
                     Reset to default prompt
                   </Button>
+                </Tabs.Content>
+
+                <Tabs.Content value="memory" className="space-y-4 focus:outline-none">
+                  <Callout tone="info">
+                    What {settings.agent.name} carries between sessions. She writes these herself when
+                    she learns something durable, and is handed them at the start of every session —
+                    no re-provision needed. Pinned notes are never trimmed.
+                  </Callout>
+
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <TextInput
+                        label="Add a note"
+                        value={newNote}
+                        onChange={(e) => setNewNote(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && newNote.trim()) void addNote();
+                        }}
+                        placeholder="Checkout API is owned by Payments; page Dana first."
+                      />
+                    </div>
+                    <Button
+                      tone="ghost"
+                      onClick={addNote}
+                      disabled={!newNote.trim()}
+                      className="mb-[1px]"
+                    >
+                      Add
+                    </Button>
+                  </div>
+
+                  {notes.length === 0 ? (
+                    <p className="py-4 text-center text-[12px] text-ink-faint">
+                      Nothing remembered yet.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {notes
+                        .slice()
+                        .sort((a, b) => Number(b.pinned) - Number(a.pinned))
+                        .map((note) => (
+                          <li key={note.id} className="surface-card flex items-start gap-2 p-2.5">
+                            <button
+                              type="button"
+                              onClick={() => void pinNote(note)}
+                              aria-label={note.pinned ? 'Unpin' : 'Pin'}
+                              className={`mt-0.5 text-[13px] transition-colors ${
+                                note.pinned ? 'text-accent' : 'text-ink-faint hover:text-ink-dim'
+                              }`}
+                            >
+                              {note.pinned ? '★' : '☆'}
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[12px] leading-relaxed text-ink-dim">{note.text}</p>
+                              {note.tag && (
+                                <span className="mt-1 inline-block rounded border border-line bg-hover px-1.5 py-0.5 font-mono-tight text-[10px] text-ink-faint">
+                                  {note.tag}
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void deleteNote(note.id)}
+                              aria-label="Forget"
+                              className="text-[12px] text-ink-faint transition-colors hover:text-critical"
+                            >
+                              ✕
+                            </button>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+
+                  {notes.length > 0 && (
+                    <Button tone="danger" onClick={clearNotes} className="text-[12px]">
+                      Forget everything
+                    </Button>
+                  )}
                 </Tabs.Content>
               </div>
 

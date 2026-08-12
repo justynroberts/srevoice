@@ -265,7 +265,9 @@ function toolConfigBody(config: ClientToolConfig) {
     // The agent must wait for the browser to round-trip through our MCP proxy,
     // otherwise it narrates an answer before the data exists.
     expects_response: true,
-    response_timeout_secs: 60,
+    // ElevenLabs' ceiling. Calls that outrun it return "still working" and land
+    // later as a contextual update — see routes/mcp.ts.
+    response_timeout_secs: 120,
     parameters: config.parameters,
   };
 }

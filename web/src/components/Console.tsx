@@ -4,7 +4,7 @@ import { useSreConversation } from '../hooks/useSreConversation';
 import type { ServerStatus } from '../lib/api';
 import { ToolCallCard } from './ToolCallCard';
 import { Transcript } from './Transcript';
-import { VoiceOrb } from './VoiceOrb';
+import { Avatar } from './Avatar';
 import { Button, Callout } from './ui';
 
 interface Props {
@@ -80,9 +80,9 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex shrink-0 items-center justify-between gap-4 border-b border-line px-5 py-3">
+      <header className="flex shrink-0 items-center justify-between gap-4 border-b border-line px-5 py-3.5">
         <div className="flex items-center gap-4">
-          <VoiceOrb activity={activity} muted={isMuted} name={agentName} />
+          <Avatar activity={activity} muted={isMuted} name={agentName} />
           <div className="hidden h-8 w-px bg-line sm:block" />
           <div className="hidden sm:block">
             <ConnectionSummary statuses={statuses} toolCount={tools.length} />

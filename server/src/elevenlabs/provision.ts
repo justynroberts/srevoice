@@ -5,6 +5,7 @@ import type { Settings } from '../store/schema.js';
 import { ElevenLabsClient, ElevenLabsError } from './api.js';
 import { buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from './prompt.js';
 import { normaliseToolParameters } from './schema.js';
+import { MEMORY_TOOLS } from '../memory/tools.js';
 
 export interface ProvisionReport {
   agentId: string;
@@ -35,7 +36,19 @@ export async function provision(
     throw new ProvisionError('Add an ElevenLabs API key in Settings before provisioning.');
   }
 
-  const catalogue = pool.catalogue();
+  // Memory is registered like any other tool so she can save and search
+  // without a separate mechanism.
+  const catalogue: CatalogueEntry[] = [
+    ...pool.catalogue(),
+    ...MEMORY_TOOLS.map((t) => ({
+      qualifiedName: t.name,
+      serverId: 'memory',
+      serverLabel: 'Memory',
+      remoteName: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema as unknown as Record<string, unknown>,
+    })),
+  ];
   const warnings: string[] = [];
 
   const failed = pool.status().filter((s) => s.enabled && s.state === 'error');

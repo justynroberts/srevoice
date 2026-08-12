@@ -5,28 +5,30 @@
  * neutral so status colour always means status, never decoration.
  */
 @theme {
-  /* Warm charcoals — brown-tinted rather than blue-grey, which reads softer
-     over long sessions than the colder original palette. */
-  --color-void: #14110f;
-  --color-surface: #1d1815;
-  --color-raised: #262019;
-  --color-hover: #322a22;
-  --color-line: #3b322a;
-  --color-line-strong: #4e4238;
+  /* PagerDuty's palette: their signature green on near-black, with slightly
+     warm greys so long sessions stay easy on the eye. */
+  --color-void: #0e1011;
+  --color-surface: #16191b;
+  --color-raised: #1e2225;
+  --color-hover: #272c30;
+  --color-line: #323940;
+  --color-line-strong: #454e56;
 
-  --color-ink: #f6efe7;
-  --color-ink-dim: #b8aa9c;
-  --color-ink-faint: #857567;
+  --color-ink: #f2f5f5;
+  --color-ink-dim: #a8b3b8;
+  --color-ink-faint: #717d84;
 
-  /* Coral, used only for interactive surfaces — never for status. */
-  --color-accent: #ff9068;
-  --color-accent-dim: #e8724a;
-  --color-accent-glow: #ff906826;
+  /* PagerDuty green. Interactive surfaces only — status has its own colours. */
+  --color-accent: #06ac38;
+  --color-accent-dim: #058c2d;
+  --color-accent-glow: #06ac3826;
+  --color-accent-ink: #ffffff;
 
-  --color-critical: #f4554f;
-  --color-warn: #f5b944;
-  --color-info: #6bb6ff;
-  --color-ok: #5fd68a;
+  /* PagerDuty's incident severity colours. */
+  --color-critical: #cd201f;
+  --color-warn: #ff8b38;
+  --color-info: #2f80ed;
+  --color-ok: #06ac38;
 
   --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Spline Sans Mono', ui-monospace, 'SF Mono', monospace;

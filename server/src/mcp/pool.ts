@@ -8,7 +8,10 @@ import { qualify, unqualify } from './names.js';
 
 const CLIENT_INFO = { name: 'srevoice', version: '1.0.0' };
 const CONNECT_TIMEOUT_MS = 20_000;
-const CALL_TIMEOUT_MS = 45_000;
+// Long enough for a slow PagerDuty query. ElevenLabs will not wait this long
+// for a client tool (120s is its ceiling), so anything beyond the soft budget
+// in routes/mcp.ts is delivered afterwards as a contextual update instead.
+const CALL_TIMEOUT_MS = 300_000;
 
 export type ConnectionState = 'idle' | 'connecting' | 'ready' | 'error';
 

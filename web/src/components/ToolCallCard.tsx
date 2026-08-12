@@ -5,6 +5,16 @@ import { formatDuration, humaniseToolName } from '../lib/format';
 import { DataView } from './DataView';
 
 function StatusDot({ status }: { status: ToolCall['status'] }) {
+  if (status === 'pending') {
+    // Outran its turn but still running — a slower pulse than 'running' so the
+    // distinction reads without the label.
+    return (
+      <span className="relative flex h-2 w-2" aria-label="Still running">
+        <span className="absolute inline-flex h-full w-full animate-[ping_2.5s_ease-in-out_infinite] rounded-full bg-warn opacity-60" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-warn" />
+      </span>
+    );
+  }
   if (status === 'running') {
     return (
       <span className="relative flex h-2 w-2" aria-label="Running">
@@ -107,6 +117,12 @@ export function ToolCallCard({ call, defaultOpen }: { call: ToolCall; defaultOpe
             <div className="border-t border-line px-3 py-3">
               {call.status === 'running' && (
                 <p className="text-[12px] text-ink-faint">Waiting for the MCP server…</p>
+              )}
+              {call.status === 'pending' && (
+                <p className="text-[12px] text-warn">
+                  Taking longer than the conversation could wait. Still running — the answer will be
+                  read out as soon as it lands, even if you have moved on.
+                </p>
               )}
               {call.status === 'error' && (
                 <p className="rounded-lg border border-critical/30 bg-critical/10 p-2.5 text-[12px] text-critical">
