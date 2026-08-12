@@ -48,11 +48,37 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   if (!response.ok) {
-    const message =
-      (body as { error?: string } | null)?.error ?? `Request failed with ${response.status}`;
-    throw new ApiError(message, response.status, body);
+    const payload = body as { error?: string; issues?: ValidationIssue[] } | null;
+    const base = payload?.error ?? `Request failed with ${response.status}`;
+    // A bare "Invalid settings" is useless — the server names the offending
+    // field and why, so surface that rather than dropping it.
+    const detail = describeIssues(payload?.issues);
+    throw new ApiError(detail ? `${base} — ${detail}` : base, response.status, body);
   }
   return body as T;
+}
+
+interface ValidationIssue {
+  path?: (string | number)[];
+  message?: string;
+}
+
+function describeIssues(issues: ValidationIssue[] | undefined): string | null {
+  if (!Array.isArray(issues) || issues.length === 0) return null;
+
+  const parts = issues.slice(0, 3).map((issue) => {
+    // Zod paths look like ["mcpServers", 0, "url"]; the index is noise to a
+    // reader looking at a list of server cards, so make it 1-based prose.
+    const path = (issue.path ?? [])
+      .map((segment) => (typeof segment === 'number' ? `#${segment + 1}` : segment))
+      .join('.')
+      .replace(/\.#/g, ' #');
+    const message = issue.message ?? 'is invalid';
+    return path ? `${path}: ${message}` : message;
+  });
+
+  const more = issues.length > parts.length ? ` (+${issues.length - parts.length} more)` : '';
+  return parts.join('; ') + more;
 }
 
 export const api = {

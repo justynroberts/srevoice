@@ -39,6 +39,16 @@ export function blankDraft(index: number): DraftServer {
   };
 }
 
+/**
+ * Pasting `mcp.pagerduty.com/mcp` without a scheme is the single most common
+ * way to fail validation, so assume https rather than bouncing it back.
+ */
+function normaliseUrl(raw: string): string {
+  const url = raw.trim();
+  if (!url || /^https?:\/\//i.test(url)) return url;
+  return `https://${url}`;
+}
+
 export function draftToPayload(d: DraftServer) {
   const headers: Record<string, string | null> = {};
   for (const h of d.headers) {
@@ -48,7 +58,13 @@ export function draftToPayload(d: DraftServer) {
     if (h.value === null) headers[key] = null;
     else if (h.value.trim()) headers[key] = h.value.trim();
   }
-  return { id: d.id.trim(), label: d.label.trim() || d.id.trim(), url: d.url.trim(), enabled: d.enabled, headers };
+  return {
+    id: d.id.trim(),
+    label: d.label.trim() || d.id.trim(),
+    url: normaliseUrl(d.url),
+    enabled: d.enabled,
+    headers,
+  };
 }
 
 function StatusPill({ status }: { status: ServerStatus | undefined }) {
