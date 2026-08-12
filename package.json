@@ -2,7 +2,7 @@
   "name": "srevoice",
   "version": "1.0.0",
   "private": true,
-  "description": "Voice-native SRE console — natural language conversation with PagerDuty MCP servers, on screen and out loud",
+  "description": "Voice-native SRE console \u2014 natural language conversation with PagerDuty MCP servers, on screen and out loud",
   "workspaces": [
     "server",
     "web"
@@ -16,7 +16,7 @@
     "dev:web": "npm run dev --workspace web",
     "build": "npm run build --workspace server && npm run build --workspace web",
     "start": "node server/dist/index.js",
-    "test": "npm run test --workspace server",
+    "test": "npm run test --workspace server && npm run test --workspace web",
     "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace web",
     "lint": "eslint server/src web/src --ext .ts,.tsx",
     "docker:build": "docker build -t srevoice:local .",

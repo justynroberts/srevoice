@@ -8,10 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm install                      # root install; npm workspaces (server, web)
 npm run dev                      # API :5280 + Vite :5281 concurrently
 npm run build                    # server tsc, then web tsc -b && vite build
-npm test                         # vitest, server only — web has no test suite
+npm test                         # vitest, both workspaces
 npm run typecheck                # both workspaces
 npm run docker:up                # single container, needs SREVOICE_MASTER_KEY in .env
 
+npm test --workspace web         # frontend only (jsdom + testing-library)
 npm test --workspace server -- src/crypto/seal.test.ts        # one file
 npm test --workspace server -- -t "serialises concurrent"     # one test by name
 npm run test:watch --workspace server
@@ -73,4 +74,9 @@ Ports 5280 (API) and 5281 (Vite) avoid the crowded 3000/5173 range shared with o
 
 ## Testing
 
-Pure logic only, by design: `seal`, `SettingsStore`, tool-name qualification, result rendering, JSON Schema normalisation. Network paths (`McpPool`, `ElevenLabsClient`) are not mocked — verify those against a real endpoint. `pool.sync()` against a real URL with a bad token is a fast, honest check that the transport stack works.
+Server: pure logic only, by design: `seal`, `SettingsStore`, tool-name qualification, result rendering, JSON Schema normalisation. Network paths (`McpPool`, `ElevenLabsClient`) are not mocked — verify those against a real endpoint. `pool.sync()` against a real URL with a bad token is a fast, honest check that the transport stack works.
+
+Web: `RichText` only, under jsdom. The results panel renders third-party tool
+output, so the test that raw HTML never reaches the DOM is load-bearing — and
+`SpokenText` exists precisely because parsing the transcript as Markdown mangles
+identifiers like `checkout_api_v2`.

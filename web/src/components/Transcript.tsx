@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useRef } from 'react';
 import type { Turn } from '../hooks/useSreConversation';
-import { RichText } from './RichText';
+import { SpokenText } from './RichText';
 
 const ROLE_STYLES: Record<Turn['role'], { wrap: string; label: string; body: string }> = {
   user: {
@@ -77,7 +77,7 @@ export function Transcript({ turns, agentName }: { turns: Turn[]; agentName: str
                   </span>
                 )}
                 <div className={`max-w-[85%] px-3.5 py-2 text-[13px] leading-relaxed ${style.body}`}>
-                  <RichText text={turn.text} />
+                  <SpokenText text={turn.text} />
                 </div>
               </motion.div>
             );
