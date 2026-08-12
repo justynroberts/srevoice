@@ -1,12 +1,13 @@
 @import 'tailwindcss';
 
 /*
- * Uber-dark surface ladder with a single green accent. Everything else is
- * neutral so status colour always means status, never decoration.
+ * PagerDuty's palette and type. Status colour always means status, never
+ * decoration — the green accent is reserved for interactive surfaces.
+ *
+ * Dark is the base; light overrides only the surface ladder below, so a single
+ * set of component classes serves both.
  */
 @theme {
-  /* PagerDuty's palette: their signature green on near-black, with slightly
-     warm greys so long sessions stay easy on the eye. */
   --color-void: #0e1011;
   --color-surface: #16191b;
   --color-raised: #1e2225;
@@ -18,11 +19,9 @@
   --color-ink-dim: #a8b3b8;
   --color-ink-faint: #717d84;
 
-  /* PagerDuty green. Interactive surfaces only — status has its own colours. */
   --color-accent: #06ac38;
   --color-accent-dim: #058c2d;
   --color-accent-glow: #06ac3826;
-  --color-accent-ink: #ffffff;
 
   /* PagerDuty's incident severity colours. */
   --color-critical: #cd201f;
@@ -30,8 +29,44 @@
   --color-info: #2f80ed;
   --color-ok: #06ac38;
 
-  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'Spline Sans Mono', ui-monospace, 'SF Mono', monospace;
+  /*
+   * PagerDuty sets `plainFont` — Plain, a commercial face we are not licensed
+   * for — and falls back to this stack, which is what their own site renders
+   * without it. Using their fallback verbatim is both faithful and legitimate,
+   * and it means no webfont download at all.
+   */
+  --font-sans: 'Helvetica Neue', 'Arial Nova', 'Nimbus Sans', Arial, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas,
+    'DejaVu Sans Mono', monospace;
+}
+
+/*
+ * Light mode. Set on the root element rather than via a media query alone, so
+ * an explicit choice survives a system theme that disagrees with it.
+ */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --color-void: #f7f8f8;
+  --color-surface: #ffffff;
+  --color-raised: #f1f4f4;
+  --color-hover: #e7ebeb;
+  --color-line: #dde2e2;
+  --color-line-strong: #bfc7c7;
+
+  --color-ink: #14181a;
+  --color-ink-dim: #4d595e;
+  --color-ink-faint: #78848a;
+
+  /* A touch deeper than the brand green so it clears contrast on white. */
+  --color-accent: #058c2d;
+  --color-accent-dim: #046f24;
+  --color-accent-glow: #058c2d1a;
+
+  --color-critical: #c02624;
+  --color-warn: #a85708;
+  --color-info: #1a63c4;
+  --color-ok: #058c2d;
 }
 
 @layer base {
@@ -48,6 +83,8 @@
   body {
     background-color: var(--color-void);
     color: var(--color-ink);
+    /* Native controls (scrollbars, form widgets) follow the chosen theme. */
+    color-scheme: dark;
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;

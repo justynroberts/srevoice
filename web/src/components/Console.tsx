@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useSreConversation } from '../hooks/useSreConversation';
+import { useTheme } from '../hooks/useTheme';
 import type { ServerStatus } from '../lib/api';
 import { ToolCallCard } from './ToolCallCard';
 import { Transcript } from './Transcript';
@@ -54,6 +55,7 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
     dismissProblem,
   } = useSreConversation();
 
+  const { choice, resolved, cycle } = useTheme();
   const [draft, setDraft] = useState('');
   // Collapsed by default on narrow screens; the choice sticks per browser.
   const [panelOpen, setPanelOpen] = useState(() => {
@@ -107,6 +109,40 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
           >
             {live ? 'End session' : 'Start session'}
           </Button>
+          <Button
+            tone="ghost"
+            onClick={cycle}
+            className="px-2.5 py-2"
+            aria-label={`Theme: ${choice}. Click to change.`}
+            title={choice === 'system' ? `Following your system (${resolved})` : `${choice} mode`}
+          >
+            {choice === 'system' ? (
+              <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" aria-hidden>
+                <rect x="1.75" y="2.75" width="12.5" height="8.5" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M5.5 13.75h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+            ) : resolved === 'dark' ? (
+              <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" aria-hidden>
+                <path
+                  d="M13.5 9.6A5.8 5.8 0 0 1 6.4 2.5a5.8 5.8 0 1 0 7.1 7.1Z"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" aria-hidden>
+                <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.4" />
+                <path
+                  d="M8 1v1.6M8 13.4V15M15 8h-1.6M2.6 8H1M12.9 3.1l-1.1 1.1M4.2 11.8l-1.1 1.1M12.9 12.9l-1.1-1.1M4.2 4.2 3.1 3.1"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                />
+              </svg>
+            )}
+          </Button>
+
           <Button tone="ghost" onClick={onOpenSettings} className="px-2.5 py-2" aria-label="Open settings">
             <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" aria-hidden>
               <circle cx="8" cy="8" r="2.25" stroke="currentColor" strokeWidth="1.4" />
