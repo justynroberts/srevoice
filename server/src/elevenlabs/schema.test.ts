@@ -92,3 +92,24 @@ describe('normaliseToolParameters', () => {
     expect(ids.items).toMatchObject({ type: 'string' });
   });
 });
+
+describe('array items', () => {
+  it('supplies items for a bare array — ElevenLabs 422s without them', () => {
+    const out = normaliseToolParameters({
+      type: 'object',
+      properties: { examples: { type: 'array' } },
+    });
+    const examples = (out.properties as Record<string, Record<string, unknown>>).examples;
+    expect(examples.type).toBe('array');
+    expect(examples.items).toEqual({ type: 'string' });
+  });
+
+  it('still normalises declared items', () => {
+    const out = normaliseToolParameters({
+      type: 'object',
+      properties: { ids: { type: 'array', items: { type: ['integer', 'null'] } } },
+    });
+    const ids = (out.properties as Record<string, Record<string, unknown>>).ids;
+    expect(ids.items).toMatchObject({ type: 'integer' });
+  });
+});

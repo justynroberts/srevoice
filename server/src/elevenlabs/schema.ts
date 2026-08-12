@@ -84,7 +84,10 @@ function normaliseNode(input: unknown, depth: number): Record<string, unknown> {
   }
 
   if (type === 'array') {
-    out.items = normaliseNode(node.items, depth + 1);
+    // ElevenLabs rejects an array with no `items` (422). MCP servers do emit
+    // bare `{"type": "array"}`, so default to string items rather than losing
+    // the whole tool over it.
+    out.items = node.items === undefined ? { type: 'string' } : normaliseNode(node.items, depth + 1);
   }
 
   return out;
