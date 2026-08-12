@@ -21,18 +21,29 @@ export default function App() {
   // operator find the gear behind an error banner.
   const promptedForToken = useRef(false);
 
-  const refresh = useCallback(async () => {
+  /**
+   * `adoptTools` is false for the background poll.
+   *
+   * The conversation provider is keyed on the tool list, because ElevenLabs
+   * takes client-tool handlers at construction. That makes any change to the
+   * list a full remount — which drops the live session and wipes the transcript
+   * and results panel. A transient MCP blip during the poll must not do that,
+   * and new tools are useless mid-session anyway: the agent only learns about
+   * them when it is re-provisioned. So the list is adopted on first load and
+   * after an explicit settings change, never from the poll.
+   */
+  const refresh = useCallback(async (adoptTools = false) => {
     try {
       const [catalogue, status, settings] = await Promise.all([
         api.get<{ tools: CatalogueTool[] }>('/api/mcp/catalogue'),
         api.get<{ servers: ServerStatus[] }>('/api/mcp/status'),
         api.get<{ settings: { agent: { name: string } } }>('/api/settings'),
       ]);
-      setBoot({
-        tools: catalogue.tools.map((t) => t.name),
+      setBoot((prev) => ({
+        tools: adoptTools || !prev ? catalogue.tools.map((t) => t.name) : prev.tools,
         statuses: status.servers,
         agentName: settings.settings.agent.name || 'Paige',
-      });
+      }));
       setError(null);
     } catch (err) {
       const unauthorised = err instanceof ApiError && err.status === 401;
@@ -50,12 +61,12 @@ export default function App() {
       }
       // Without a catalogue there are no client tools to register, so the voice
       // session stays unavailable until this resolves.
-      setBoot({ tools: [], statuses: [], agentName: 'Paige' });
+      setBoot((prev) => prev ?? { tools: [], statuses: [], agentName: 'Paige' });
     }
   }, []);
 
   useEffect(() => {
-    void refresh();
+    void refresh(true);
   }, [refresh]);
 
   // Reflect MCP health without forcing the operator to reopen Settings.
@@ -116,7 +127,7 @@ export default function App() {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         statuses={boot.statuses}
-        onChanged={() => void refresh()}
+        onChanged={() => void refresh(true)}
       />
     </div>
   );

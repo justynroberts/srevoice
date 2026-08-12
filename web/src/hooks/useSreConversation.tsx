@@ -248,9 +248,11 @@ export function useSreConversation() {
         if (cancelled) return;
         for (const settled of poll.settled) {
           settlePending(settled);
+          // Phrased as a note about the world, not as an instruction: an
+          // imperative here gets read out verbatim.
           const preamble = settled.ok
-            ? `The ${settled.tool} lookup you started earlier has finished. Tell the engineer now, briefly, even if the conversation has moved on — say what it was about first so they can place it.`
-            : `The ${settled.tool} lookup you started earlier failed. Mention it briefly.`;
+            ? `[Background] The earlier ${settled.tool} lookup has just come back. The engineer has not seen this yet and may have moved on, so it is worth mentioning briefly with a word about what it relates to.`
+            : `[Background] The earlier ${settled.tool} lookup failed.`;
           conversation.sendContextualUpdate(`${preamble}\n\n${settled.speech}`);
           addTurn('system', `Late result: ${settled.tool}`);
         }

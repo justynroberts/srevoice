@@ -36,3 +36,12 @@ describe('buildSystemPrompt', () => {
     expect(out).toContain('### SRE Agent');
   });
 });
+
+describe('screen guidance', () => {
+  it('tells the agent to mirror filtered data onto the screen', () => {
+    // The screen only shows raw tool results, so a filter done in her head
+    // leaves the engineer reading a different list than the one she describes.
+    expect(DEFAULT_SYSTEM_PROMPT).toContain('screen__show');
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/as well as answering out loud/i);
+  });
+});

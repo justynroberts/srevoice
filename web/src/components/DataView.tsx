@@ -99,6 +99,17 @@ export function DataView({ value }: { value: unknown }) {
     case 'empty':
       return <p className="py-2 text-[12px] italic text-ink-faint">No results.</p>;
 
+    case 'titled':
+      return (
+        <div>
+          <p className="text-[12px] font-semibold text-ink">{shape.title}</p>
+          {shape.note && <p className="mb-2 text-[11px] text-ink-faint">{shape.note}</p>}
+          <div className={shape.note ? '' : 'mt-2'}>
+            <DataView value={shape.inner} />
+          </div>
+        </div>
+      );
+
     case 'text':
       return <RichText text={shape.text} className="text-[12px] leading-relaxed text-ink-dim" />;
 

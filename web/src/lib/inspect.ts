@@ -20,6 +20,7 @@ export interface IncidentLike {
 
 export type Shape =
   | { kind: 'empty' }
+  | { kind: 'titled'; title: string; note?: string; inner: unknown }
   | { kind: 'text'; text: string }
   | { kind: 'incidents'; incidents: IncidentLike[]; total: number }
   | { kind: 'table'; rows: Record<string, unknown>[]; columns: string[] }
@@ -103,6 +104,18 @@ function findCollection(value: unknown, depth = 0): unknown[] | null {
 
 export function classify(value: unknown): Shape {
   if (value === null || value === undefined || value === '') return { kind: 'empty' };
+
+  // A screen__show payload — the agent's own filtered view. Keep the heading
+  // and render the rows with whatever renderer their shape deserves.
+  const rec0 = asRecord(value);
+  if (rec0 && typeof rec0.title === 'string' && Array.isArray(rec0.items)) {
+    return {
+      kind: 'titled',
+      title: rec0.title,
+      note: typeof rec0.note === 'string' ? rec0.note : undefined,
+      inner: rec0.items,
+    };
+  }
 
   if (typeof value === 'string') {
     return { kind: 'text', text: value };
