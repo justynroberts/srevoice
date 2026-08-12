@@ -159,7 +159,10 @@ function buildAgentBody(
         },
       },
       tts: {
-        model_id: settings.voice.modelId,
+        // ElevenLabs rejects an English agent on anything but turbo/flash v2,
+        // so a multilingual pick that looks valid in the dropdown fails at
+        // provision time. Coerce rather than surfacing their error verbatim.
+        model_id: ttsModelFor(settings.voice.modelId, settings.agent.language),
         voice_id: settings.voice.voiceId,
         stability: settings.voice.stability,
         similarity_boost: settings.voice.similarityBoost,
@@ -176,6 +179,17 @@ function buildAgentBody(
       },
     },
   };
+}
+
+/**
+ * English agents are restricted to the turbo/flash v2 families. Anything else
+ * — multilingual especially — is rejected at agent-create time.
+ */
+export function ttsModelFor(modelId: string, language: string): string {
+  const isEnglish = language.toLowerCase().startsWith('en');
+  if (!isEnglish) return modelId;
+  if (/^eleven_(turbo|flash)_v2/.test(modelId)) return modelId;
+  return 'eleven_flash_v2_5';
 }
 
 function toolDescription(entry: CatalogueEntry): string {
