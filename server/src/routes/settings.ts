@@ -99,12 +99,17 @@ export const settingsRoutes = (ctx: AppContext): FastifyPluginAsync =>
 
       try {
         const result = await new ElevenLabsClient(key).verifyKey();
-        return { ok: true, subscriptionTier: result.subscriptionTier };
+        return { ok: true, subscriptionTier: result.subscriptionTier, scopeNote: result.scopeNote };
       } catch (err) {
         if (err instanceof ElevenLabsError) {
+          // Pass the upstream detail through. "Rejected" alone sends people
+          // hunting for a typo when the real cause is usually a missing
+          // Agents/ConvAI permission on a scoped key, or the wrong region.
           return reply.code(err.isAuthFailure ? 401 : 502).send({
             ok: false,
-            error: err.isAuthFailure ? 'ElevenLabs rejected that API key.' : err.message,
+            error: err.isAuthFailure
+              ? `ElevenLabs rejected that key for Agents. Check it has Agents (ConvAI) permission enabled — a key scoped to TTS only will fail here. Upstream said: ${err.message}`
+              : err.message,
           });
         }
         throw err;

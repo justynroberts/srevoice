@@ -150,11 +150,14 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
     setError(null);
     setNotice(null);
     try {
-      const res = await api.post<{ ok: boolean; subscriptionTier?: string }>(
+      const res = await api.post<{ ok: boolean; subscriptionTier?: string; scopeNote?: string }>(
         '/api/settings/verify-elevenlabs',
         apiKey.trim() ? { apiKey: apiKey.trim() } : {},
       );
-      setNotice(`ElevenLabs key works${res.subscriptionTier ? ` (${res.subscriptionTier} plan)` : ''}.`);
+      setNotice(
+        res.scopeNote ??
+          `ElevenLabs key works for Agents${res.subscriptionTier ? ` (${res.subscriptionTier} plan)` : ''}.`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

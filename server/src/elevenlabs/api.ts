@@ -93,10 +93,31 @@ export class ElevenLabsClient {
     return body as T;
   }
 
-  /** Cheap credential probe used by the settings page. */
-  async verifyKey(): Promise<{ ok: true; subscriptionTier?: string }> {
-    const user = await this.request<{ subscription?: { tier?: string } }>('/v1/user');
-    return { ok: true, subscriptionTier: user?.subscription?.tier };
+  /**
+   * Credential probe for the settings page.
+   *
+   * Tests the Agents surface, not `/v1/user`. ElevenLabs API keys can be scoped
+   * to specific permissions, so a key that is perfectly good for Agents may
+   * have no user-read access at all — probing `/v1/user` first would reject it
+   * as invalid when nothing is wrong with it.
+   *
+   * The tier lookup is therefore best-effort and never decides the verdict.
+   */
+  async verifyKey(): Promise<{ ok: true; subscriptionTier?: string; scopeNote?: string }> {
+    await this.request('/v1/convai/llm/list');
+
+    try {
+      const user = await this.request<{ subscription?: { tier?: string } }>('/v1/user');
+      return { ok: true, subscriptionTier: user?.subscription?.tier };
+    } catch (err) {
+      if (err instanceof ElevenLabsError && err.isAuthFailure) {
+        return {
+          ok: true,
+          scopeNote: 'Key works for Agents but cannot read your account profile — a scoped key. That is fine here.',
+        };
+      }
+      throw err;
+    }
   }
 
   /**
