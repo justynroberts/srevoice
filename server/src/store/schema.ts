@@ -17,17 +17,19 @@ export const mcpServerSchema = z.object({
 export type McpServerConfig = z.infer<typeof mcpServerSchema>;
 
 export const voiceSettingsSchema = z.object({
-  /** Sarah — mature, reassuring, confident. Calm carries better mid-incident. */
-  voiceId: z.string().min(1).default('EXAVITQu4vr4xnSDxMaL'),
+  /** Lily — velvety and soft-spoken. Calm carries better mid-incident. */
+  voiceId: z.string().min(1).default('pFZP5JQG7iQjIQuC4Bku'),
   /**
    * English agents are restricted to the English-only v2 models; the `_v2_5`
    * editions are multilingual and rejected at agent-create time. See
    * `ttsModelFor` in elevenlabs/provision.ts.
    */
   modelId: z.string().min(1).default('eleven_flash_v2'),
-  stability: z.number().min(0).max(1).default(0.45),
-  similarityBoost: z.number().min(0).max(1).default(0.8),
-  speed: z.number().min(0.7).max(1.2).default(1.05),
+  /** Higher stability reads as steadier and less emphatic — calmer under pressure. */
+  stability: z.number().min(0).max(1).default(0.65),
+  similarityBoost: z.number().min(0).max(1).default(0.75),
+  /** Below 1.0 so an engineer can follow an incident summary first time. */
+  speed: z.number().min(0.7).max(1.2).default(0.85),
 });
 
 export const agentSettingsSchema = z.object({
