@@ -148,7 +148,7 @@ export const settingsRoutes = (ctx: AppContext): FastifyPluginAsync =>
       ]);
 
       return {
-        voices: voices.map((v) => ({ id: v.voice_id, name: v.name, category: v.category })),
+        voices,
         llms,
         ttsModels,
         source: 'live' as const,

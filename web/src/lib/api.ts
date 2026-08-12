@@ -182,8 +182,19 @@ export interface LlmOption {
   maxContext: number | null;
 }
 
+export interface VoiceOption {
+  id: string;
+  name: string;
+  category: string | null;
+  accent: string | null;
+  gender: string | null;
+  age: string | null;
+  description: string | null;
+  useCase: string | null;
+}
+
 export interface SettingsOptions {
-  voices: { id: string; name: string; category?: string }[];
+  voices: VoiceOption[];
   llms: LlmOption[];
   ttsModels: { id: string; name: string }[];
   source: 'live' | 'none';

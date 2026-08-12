@@ -10,6 +10,7 @@ import {
   type ServerStatus,
   type SettingsOptions,
   type SettingsView,
+  type VoiceOption,
 } from '../lib/api';
 import {
   blankDraft,
@@ -62,6 +63,13 @@ function llmHint(llms: LlmOption[], selected: string): ReactNode {
   return `Live from your account (${llms.length} available). Billed by ElevenLabs, no LLM key needed.`;
 }
 
+/** "Lily — British, female" beats a bare name when picking a voice to live with. */
+function voiceLabel(v: VoiceOption): string {
+  const traits = [v.accent, v.gender].filter(Boolean).join(', ');
+  const name = v.name.split(' - ')[0].trim();
+  return traits ? `${name} — ${traits}` : name;
+}
+
 const TAB_TRIGGER =
   'rounded-lg px-3 py-1.5 text-[12px] font-medium text-ink-faint transition-colors hover:text-ink-dim data-[state=active]:bg-raised data-[state=active]:text-ink';
 
@@ -78,7 +86,7 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
   const [drafts, setDrafts] = useState<DraftServer[]>([]);
   const [apiKey, setApiKey] = useState('');
   const [token, setToken] = useState(getAccessToken());
-  const [voices, setVoices] = useState<{ id: string; name: string }[]>([]);
+  const [voices, setVoices] = useState<VoiceOption[]>([]);
   const [llms, setLlms] = useState<LlmOption[]>([]);
   const [ttsModels, setTtsModels] = useState<{ id: string; name: string }[]>([]);
 
@@ -349,10 +357,14 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
                     }
                     options={
                       voices.length
-                        ? voices.map((v) => ({ value: v.id, label: v.name }))
+                        ? voices.map((v) => ({ value: v.id, label: voiceLabel(v) }))
                         : [{ value: settings.voice.voiceId, label: settings.voice.voiceId }]
                     }
-                    hint={voices.length ? undefined : 'Save a working API key to load your voice library.'}
+                    hint={
+                      voices.length
+                        ? `${voices.length} voices from your account, shown as name — accent, gender.`
+                        : 'Save a working API key to load your voice library.'
+                    }
                   />
                   <Combo
                     label="Model"

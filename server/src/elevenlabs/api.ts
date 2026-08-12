@@ -39,6 +39,30 @@ interface RawLlm {
   } | null;
 }
 
+export interface VoiceOption {
+  id: string;
+  name: string;
+  category: string | null;
+  accent: string | null;
+  gender: string | null;
+  age: string | null;
+  description: string | null;
+  useCase: string | null;
+}
+
+interface RawVoice {
+  voice_id: string;
+  name?: string;
+  category?: string;
+  labels?: {
+    accent?: string;
+    gender?: string;
+    age?: string;
+    description?: string;
+    use_case?: string;
+  };
+}
+
 interface RawTtsModel {
   model_id: string;
   name?: string;
@@ -149,11 +173,25 @@ export class ElevenLabsClient {
       .map((m) => ({ id: m.model_id, name: m.name ?? m.model_id }));
   }
 
-  async listVoices(): Promise<Array<{ voice_id: string; name: string; category?: string }>> {
-    const res = await this.request<{ voices?: Array<{ voice_id: string; name: string; category?: string }> }>(
-      '/v1/voices',
-    );
-    return res?.voices ?? [];
+  /**
+   * Voices carry `labels` describing accent, gender and age. Surfacing them is
+   * the difference between picking a voice by name and picking one you can
+   * actually stand to listen to for an hour.
+   */
+  async listVoices(): Promise<VoiceOption[]> {
+    const res = await this.request<{ voices?: RawVoice[] }>('/v1/voices');
+    return (res?.voices ?? [])
+      .filter((v) => typeof v?.voice_id === 'string')
+      .map((v) => ({
+        id: v.voice_id,
+        name: v.name ?? v.voice_id,
+        category: v.category ?? null,
+        accent: v.labels?.accent ?? null,
+        gender: v.labels?.gender ?? null,
+        age: v.labels?.age ?? null,
+        description: v.labels?.description ?? null,
+        useCase: v.labels?.use_case ?? null,
+      }));
   }
 
   async createClientTool(config: ClientToolConfig): Promise<string> {
