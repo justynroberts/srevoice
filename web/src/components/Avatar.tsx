@@ -13,38 +13,46 @@ import { VoiceOrb } from './VoiceOrb';
  */
 const EXTENSIONS = ['webp', 'gif', 'png', 'jpg', 'svg'] as const;
 
-const STATE_FILE: Record<Activity, string> = {
-  offline: 'offline',
-  connecting: 'thinking',
-  listening: 'listening',
-  thinking: 'thinking',
-  speaking: 'speaking',
+/**
+ * Each state names its own file, with a fallback for states that can
+ * reasonably borrow another's art. That way a partial set still covers every
+ * state before it falls back to the orb.
+ */
+const STATE_FILE: Record<Activity, string[]> = {
+  offline: ['offline'],
+  connecting: ['connecting', 'listening', 'thinking'],
+  listening: ['listening'],
+  thinking: ['thinking'],
+  speaking: ['speaking'],
 };
 
-/** Resolves the first extension that actually loads, once per state. */
-function useAvatarSource(state: string): string | null {
+/** Resolves the first name-and-extension pair that actually loads. */
+function useAvatarSource(names: string[]): string | null {
   const [src, setSrc] = useState<string | null>(null);
+  const key = names.join(',');
 
   useEffect(() => {
     let cancelled = false;
     setSrc(null);
 
+    const candidates = names.flatMap((n) => EXTENSIONS.map((ext) => `/avatars/${n}.${ext}`));
     const tryNext = (i: number) => {
-      if (cancelled || i >= EXTENSIONS.length) return;
-      const candidate = `/avatars/${state}.${EXTENSIONS[i]}`;
+      if (cancelled || i >= candidates.length) return;
       const img = new Image();
       img.onload = () => {
-        if (!cancelled) setSrc(candidate);
+        if (!cancelled) setSrc(candidates[i]);
       };
       img.onerror = () => tryNext(i + 1);
-      img.src = candidate;
+      img.src = candidates[i];
     };
     tryNext(0);
 
     return () => {
       cancelled = true;
     };
-  }, [state]);
+    // `key` collapses the array identity so a new render does not refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
   return src;
 }
@@ -58,8 +66,7 @@ export function Avatar({
   muted: boolean;
   name: string;
 }) {
-  const file = STATE_FILE[activity];
-  const src = useAvatarSource(file);
+  const src = useAvatarSource(STATE_FILE[activity]);
 
   if (!src) {
     return (

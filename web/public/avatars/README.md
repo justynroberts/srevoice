@@ -1,18 +1,22 @@
 # Avatar artwork
 
-Drop files here named for the state they represent. The first extension that
-loads wins, tried in this order: `webp`, `gif`, `png`, `jpg`, `svg`.
+One image per conversational state, loaded by convention. The first name and
+extension that loads wins; extensions are tried in order `webp`, `gif`, `png`,
+`jpg`, `svg`.
 
-| File | Shown when |
-|---|---|
-| `offline.<ext>` | No session running |
-| `listening.<ext>` | Session live, waiting for you to speak |
-| `thinking.<ext>` | Running a tool, or composing a reply (also used while connecting) |
-| `speaking.<ext>` | Talking |
+| File | Shown when | Falls back to |
+|---|---|---|
+| `offline.<ext>` | No session running | — |
+| `connecting.<ext>` | Waking up, before the socket is live | `listening`, `thinking` |
+| `listening.<ext>` | Session live, waiting for you to speak | — |
+| `thinking.<ext>` | Running a tool or composing a reply | — |
+| `speaking.<ext>` | Talking | — |
 
-Animated GIF and WebP both work and are the point of splitting the states.
-Square art, at least 112×112 so it stays crisp on a retina display; it is
-rendered as a circle, so keep the subject centred.
+Any state with no file falls back to the animated orb, so a partial set is fine.
 
-Any state without a file falls back to the animated orb, so you can add them
-one at a time.
+Square art, 256px or larger; it renders as a 56px circle, so keep the subject
+centred. Animated GIF and WebP both work.
+
+The committed set was resized to 256px and converted with:
+
+    sips -Z 256 source.png --out tmp.png && cwebp -q 88 tmp.png -o state.webp
