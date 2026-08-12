@@ -182,14 +182,16 @@ function buildAgentBody(
 }
 
 /**
- * English agents are restricted to the turbo/flash v2 families. Anything else
- * — multilingual especially — is rejected at agent-create time.
+ * English agents accept only the English-only TTS models: `eleven_turbo_v2`
+ * and `eleven_flash_v2`. The `_v2_5` variants are the *multilingual* editions
+ * and are rejected with "English Agents must use turbo or flash v2" — so the
+ * match has to be exact, not a `v2` prefix.
  */
 export function ttsModelFor(modelId: string, language: string): string {
-  const isEnglish = language.toLowerCase().startsWith('en');
-  if (!isEnglish) return modelId;
-  if (/^eleven_(turbo|flash)_v2/.test(modelId)) return modelId;
-  return 'eleven_flash_v2_5';
+  if (!language.toLowerCase().startsWith('en')) return modelId;
+  if (modelId === 'eleven_turbo_v2' || modelId === 'eleven_flash_v2') return modelId;
+  // Preserve the turbo/flash choice where the operator made one.
+  return modelId.includes('turbo') ? 'eleven_turbo_v2' : 'eleven_flash_v2';
 }
 
 function toolDescription(entry: CatalogueEntry): string {
