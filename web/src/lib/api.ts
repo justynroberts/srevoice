@@ -31,7 +31,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     ...init,
     headers: {
-      'content-type': 'application/json',
+      // Only declare a JSON body when there is one — Fastify rejects an empty
+      // body sent with `content-type: application/json`, which is what a
+      // bodyless POST like /api/provision produces.
+      ...(init.body === undefined ? {} : { 'content-type': 'application/json' }),
       ...(token ? { 'x-srevoice-token': token } : {}),
       ...(init.headers as Record<string, string> | undefined),
     },

@@ -31,6 +31,24 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
     bodyLimit: 1_048_576,
   });
 
+  // Treat an empty JSON body as `{}`. Several routes take no body at all, and
+  // Fastify's default parser 400s on `content-type: application/json` with
+  // nothing after it — a failure that looks like a bad request from the
+  // operator rather than a bodyless POST.
+  app.addContentTypeParser(
+    'application/json',
+    { parseAs: 'string' },
+    (_req, body: string, done) => {
+      if (!body || body.trim() === '') return done(null, {});
+      try {
+        done(null, JSON.parse(body));
+      } catch (err) {
+        (err as { statusCode?: number }).statusCode = 400;
+        done(err as Error, undefined);
+      }
+    },
+  );
+
   await app.register(cors, {
     origin: resolveCorsOrigins(),
     credentials: true,
