@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useSreConversation } from '../hooks/useSreConversation';
 import type { ServerStatus } from '../lib/api';
 import { ToolCallCard } from './ToolCallCard';
@@ -10,17 +10,21 @@ import { Button, Callout } from './ui';
 interface Props {
   tools: string[];
   statuses: ServerStatus[];
+  agentName: string;
   onOpenSettings: () => void;
 }
 
+const PANEL_KEY = 'srevoice.dataPanelOpen';
+
 function ConnectionSummary({ statuses, toolCount }: { statuses: ServerStatus[]; toolCount: number }) {
-  const failed = statuses.filter((s) => s.enabled && s.state === 'error');
+  const enabled = statuses.filter((s) => s.enabled);
   const ready = statuses.filter((s) => s.state === 'ready');
+  const failed = enabled.filter((s) => s.state === 'error');
 
   return (
-    <div className="flex items-center gap-2 font-mono-tight text-[11px]">
+    <div className="flex items-center gap-2 text-[11px]">
       <span className={ready.length ? 'text-ok' : 'text-ink-faint'}>
-        {ready.length}/{statuses.filter((s) => s.enabled).length || 0} MCP
+        {ready.length}/{enabled.length} connected
       </span>
       <span className="text-ink-faint">·</span>
       <span className="text-ink-dim">{toolCount} tools</span>
@@ -34,13 +38,13 @@ function ConnectionSummary({ statuses, toolCount }: { statuses: ServerStatus[]; 
   );
 }
 
-export function Console({ tools, statuses, onOpenSettings }: Props) {
+export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
   const {
     turns,
     toolCalls,
     phase,
     problem,
-    isSpeaking,
+    activity,
     isMuted,
     setMuted,
     start,
@@ -51,7 +55,22 @@ export function Console({ tools, statuses, onOpenSettings }: Props) {
   } = useSreConversation();
 
   const [draft, setDraft] = useState('');
+  // Collapsed by default on narrow screens; the choice sticks per browser.
+  const [panelOpen, setPanelOpen] = useState(() => {
+    const stored = localStorage.getItem(PANEL_KEY);
+    if (stored !== null) return stored === 'true';
+    return typeof window === 'undefined' ? true : window.innerWidth >= 1024;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(PANEL_KEY, String(panelOpen));
+  }, [panelOpen]);
+
   const live = phase === 'live';
+  const running = toolCalls.filter((c) => c.status === 'running').length;
+
+  // Something new arrived while the panel was shut — worth a nudge.
+  const unseen = !panelOpen && toolCalls.length > 0;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -63,7 +82,7 @@ export function Console({ tools, statuses, onOpenSettings }: Props) {
     <div className="flex h-full flex-col">
       <header className="flex shrink-0 items-center justify-between gap-4 border-b border-line px-5 py-3">
         <div className="flex items-center gap-4">
-          <VoiceOrb phase={phase} isSpeaking={isSpeaking} muted={isMuted} />
+          <VoiceOrb activity={activity} muted={isMuted} name={agentName} />
           <div className="hidden h-8 w-px bg-line sm:block" />
           <div className="hidden sm:block">
             <ConnectionSummary statuses={statuses} toolCount={tools.length} />
@@ -129,10 +148,14 @@ export function Console({ tools, statuses, onOpenSettings }: Props) {
         )}
       </AnimatePresence>
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+      <div
+        className={`grid min-h-0 flex-1 transition-[grid-template-columns] duration-300 ease-out ${
+          panelOpen ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]' : 'lg:grid-cols-[minmax(0,1fr)_3rem]'
+        }`}
+      >
         <section className="flex min-h-0 flex-col border-line lg:border-r">
           <div className="min-h-0 flex-1">
-            <Transcript turns={turns} />
+            <Transcript turns={turns} agentName={agentName} />
           </div>
 
           <form onSubmit={submit} className="shrink-0 border-t border-line p-3">
@@ -141,8 +164,8 @@ export function Console({ tools, statuses, onOpenSettings }: Props) {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 disabled={!live}
-                placeholder={live ? 'Type instead of speaking…' : 'Start a session to talk'}
-                className="flex-1 rounded-lg border border-line bg-void px-3 py-2 text-[13px] text-ink placeholder:text-ink-faint transition-colors focus:border-accent focus:outline-none disabled:opacity-50"
+                placeholder={live ? `Type to ${agentName} instead of speaking…` : 'Start a session to talk'}
+                className="flex-1 rounded-xl border border-line bg-void px-3.5 py-2.5 text-[13px] text-ink placeholder:text-ink-faint transition-colors focus:border-accent focus:outline-none disabled:opacity-50"
               />
               <Button tone="ghost" type="submit" disabled={!live || !draft.trim()}>
                 Send
@@ -151,31 +174,81 @@ export function Console({ tools, statuses, onOpenSettings }: Props) {
           </form>
         </section>
 
-        <section className="flex min-h-0 flex-col">
-          <div className="flex shrink-0 items-baseline justify-between border-b border-line px-4 py-2.5">
-            <h2 className="font-mono-tight text-[11px] uppercase tracking-wider text-ink-faint">Live data</h2>
-            {toolCalls.length > 0 && (
-              <span className="font-mono-tight text-[11px] text-ink-faint">{toolCalls.length} calls</span>
-            )}
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            {toolCalls.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-                <p className="text-[13px] text-ink-dim">No tool calls yet.</p>
-                <p className="max-w-xs text-[12px] leading-relaxed text-ink-faint">
-                  Everything the agent looks up lands here in full, while it gives you the short version out
-                  loud.
-                </p>
-              </div>
+        {/* Collapsed to a rail rather than removed — the toggle stays reachable
+            and the running-call count is still visible while it is shut. */}
+        <section className="flex min-h-0 flex-col overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setPanelOpen((o) => !o)}
+            aria-expanded={panelOpen}
+            className={`flex shrink-0 items-center gap-2 border-b border-line px-4 py-2.5 text-left transition-colors hover:bg-raised/60 ${
+              panelOpen ? 'justify-between' : 'justify-center'
+            }`}
+          >
+            {panelOpen ? (
+              <>
+                <span className="flex items-baseline gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
+                    What she looked up
+                  </span>
+                  {running > 0 && (
+                    <span className="text-[11px] text-accent">{running} running</span>
+                  )}
+                </span>
+                <span className="flex items-center gap-2">
+                  {toolCalls.length > 0 && (
+                    <span className="text-[11px] text-ink-faint">{toolCalls.length}</span>
+                  )}
+                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-ink-faint" fill="none" aria-hidden>
+                    <path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              </>
             ) : (
-              <div className="flex flex-col-reverse gap-2.5">
-                {toolCalls.map((call, i) => (
-                  <ToolCallCard key={call.id} call={call} defaultOpen={i === toolCalls.length - 1} />
-                ))}
-              </div>
+              <span className="relative flex flex-col items-center gap-1">
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-ink-faint" fill="none" aria-hidden>
+                  <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {(running > 0 || unseen) && (
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${running > 0 ? 'animate-pulse bg-accent' : 'bg-ink-faint'}`}
+                    aria-label={running > 0 ? 'Tool calls running' : 'New results'}
+                  />
+                )}
+              </span>
             )}
-          </div>
+          </button>
+
+          {panelOpen && (
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              {toolCalls.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+                  <p className="text-[13px] text-ink-dim">Nothing looked up yet.</p>
+                  <p className="max-w-xs text-[12px] leading-relaxed text-ink-faint">
+                    Everything {agentName} checks lands here in full, while she gives you the short
+                    version out loud.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col-reverse gap-2.5">
+                  {toolCalls.map((call, i) => (
+                    <ToolCallCard key={call.id} call={call} defaultOpen={i === toolCalls.length - 1} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!panelOpen && (
+            <button
+              type="button"
+              onClick={() => setPanelOpen(true)}
+              className="min-h-0 flex-1 [writing-mode:vertical-rl] py-4 text-[11px] font-semibold uppercase tracking-wider text-ink-faint transition-colors hover:text-accent"
+            >
+              What she looked up
+              {toolCalls.length > 0 && ` · ${toolCalls.length}`}
+            </button>
+          )}
         </section>
       </div>
     </div>

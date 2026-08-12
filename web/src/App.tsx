@@ -8,6 +8,7 @@ import { api, ApiError, type CatalogueTool, type ServerStatus } from './lib/api'
 interface Bootstrap {
   tools: string[];
   statuses: ServerStatus[];
+  agentName: string;
 }
 
 export default function App() {
@@ -22,11 +23,16 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     try {
-      const [catalogue, status] = await Promise.all([
+      const [catalogue, status, settings] = await Promise.all([
         api.get<{ tools: CatalogueTool[] }>('/api/mcp/catalogue'),
         api.get<{ servers: ServerStatus[] }>('/api/mcp/status'),
+        api.get<{ settings: { agent: { name: string } } }>('/api/settings'),
       ]);
-      setBoot({ tools: catalogue.tools.map((t) => t.name), statuses: status.servers });
+      setBoot({
+        tools: catalogue.tools.map((t) => t.name),
+        statuses: status.servers,
+        agentName: settings.settings.agent.name || 'Paige',
+      });
       setError(null);
     } catch (err) {
       const unauthorised = err instanceof ApiError && err.status === 401;
@@ -44,7 +50,7 @@ export default function App() {
       }
       // Without a catalogue there are no client tools to register, so the voice
       // session stays unavailable until this resolves.
-      setBoot({ tools: [], statuses: [] });
+      setBoot({ tools: [], statuses: [], agentName: 'Paige' });
     }
   }, []);
 
@@ -100,6 +106,7 @@ export default function App() {
           <Console
             tools={boot.tools}
             statuses={boot.statuses}
+            agentName={boot.agentName}
             onOpenSettings={() => setSettingsOpen(true)}
           />
         </SreConversationProvider>

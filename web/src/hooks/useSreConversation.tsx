@@ -3,6 +3,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -30,6 +31,9 @@ export interface ToolCall {
 
 export type SessionPhase = 'idle' | 'requesting-mic' | 'connecting' | 'live' | 'ending';
 
+/** What Paige is doing right now — drives the orb. */
+export type Activity = 'offline' | 'connecting' | 'listening' | 'thinking' | 'speaking';
+
 export interface SessionProblem {
   message: string;
   needs: 'apiKey' | 'provision' | 'mic' | null;
@@ -43,8 +47,10 @@ interface SreState {
   toolCalls: ToolCall[];
   phase: SessionPhase;
   problem: SessionProblem | null;
+  awaitingReply: boolean;
   setPhase: (p: SessionPhase) => void;
   setProblem: (p: SessionProblem | null) => void;
+  setAwaitingReply: (v: boolean) => void;
   addTurn: (role: Turn['role'], text: string) => void;
   clear: () => void;
 }
@@ -70,6 +76,7 @@ export function SreConversationProvider({
   const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
   const [phase, setPhase] = useState<SessionPhase>('idle');
   const [problem, setProblem] = useState<SessionProblem | null>(null);
+  const [awaitingReply, setAwaitingReply] = useState(false);
 
   const addTurn = useCallback((role: Turn['role'], text: string) => {
     const clean = text?.trim();
@@ -138,15 +145,18 @@ export function SreConversationProvider({
       toolCalls,
       phase,
       problem,
+      awaitingReply,
       setPhase,
       setProblem,
+      setAwaitingReply,
       addTurn,
       clear: () => {
         setTurns([]);
         setToolCalls([]);
+        setAwaitingReply(false);
       },
     }),
-    [turns, toolCalls, phase, problem, addTurn],
+    [turns, toolCalls, phase, problem, awaitingReply, addTurn],
   );
 
   return (
@@ -156,7 +166,10 @@ export function SreConversationProvider({
         setPhase('live');
         setProblem(null);
       }}
-      onDisconnect={() => setPhase('idle')}
+      onDisconnect={() => {
+        setPhase('idle');
+        setAwaitingReply(false);
+      }}
       onError={(message: string) => {
         setProblem({ message: message || 'Voice connection error', needs: null });
         setPhase('idle');
@@ -164,7 +177,11 @@ export function SreConversationProvider({
       onMessage={({ message, role, source }) => {
         // `role` supersedes the deprecated `source`; both are present today.
         const speaker = role ?? source;
-        addTurn(speaker === 'user' ? 'user' : 'agent', message);
+        const isUser = speaker === 'user';
+        // A finished user transcript means the turn is now hers — she is
+        // thinking until she either speaks or calls a tool.
+        setAwaitingReply(isUser);
+        addTurn(isUser ? 'user' : 'agent', message);
       }}
     >
       <SreStateContext.Provider value={state}>{children}</SreStateContext.Provider>
@@ -178,8 +195,26 @@ export function useSreConversation() {
   if (!state) throw new Error('useSreConversation must be used within SreConversationProvider');
 
   const conversation = useConversation();
-  const { setPhase, setProblem, addTurn, phase } = state;
+  const { setPhase, setProblem, setAwaitingReply, addTurn, phase } = state;
   const startingRef = useRef(false);
+
+  const toolRunning = state.toolCalls.some((c) => c.status === 'running');
+
+  /**
+   * Speaking wins over thinking: once audio starts the reply has clearly begun.
+   * A running tool call is the strongest thinking signal, and the gap after a
+   * user transcript covers the rest.
+   */
+  const activity: Activity =
+    phase === 'connecting' || phase === 'requesting-mic'
+      ? 'connecting'
+      : phase !== 'live'
+        ? 'offline'
+        : conversation.isSpeaking
+          ? 'speaking'
+          : toolRunning || state.awaitingReply
+            ? 'thinking'
+            : 'listening';
 
   const start = useCallback(async () => {
     if (startingRef.current) return;
@@ -220,14 +255,22 @@ export function useSreConversation() {
     setPhase('idle');
   }, [conversation, setPhase]);
 
+  // She has answered — stop showing the thinking state. In an effect rather
+  // than during render: the flag lives in the provider above this hook.
+  const speaking = conversation.isSpeaking;
+  useEffect(() => {
+    if (speaking) setAwaitingReply(false);
+  }, [speaking, setAwaitingReply]);
+
   const sendText = useCallback(
     (text: string) => {
       const clean = text.trim();
       if (!clean || phase !== 'live') return;
       conversation.sendUserMessage(clean);
       addTurn('user', clean);
+      setAwaitingReply(true);
     },
-    [conversation, phase, addTurn],
+    [conversation, phase, addTurn, setAwaitingReply],
   );
 
   return {
@@ -235,6 +278,7 @@ export function useSreConversation() {
     toolCalls: state.toolCalls,
     phase: state.phase,
     problem: state.problem,
+    activity,
     isSpeaking: conversation.isSpeaking,
     status: conversation.status,
     isMuted: conversation.isMuted,

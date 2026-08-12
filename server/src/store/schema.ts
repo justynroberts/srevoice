@@ -33,15 +33,22 @@ export const voiceSettingsSchema = z.object({
 });
 
 export const agentSettingsSchema = z.object({
-  name: z.string().min(1).max(80).default('SRE Voice'),
+  name: z.string().min(1).max(80).default('Paige'),
   llm: z.string().min(1).default('claude-sonnet-4-5'),
   temperature: z.number().min(0).max(1).default(0.1),
   language: z.string().min(2).max(8).default('en'),
   firstMessage: z
     .string()
     .max(500)
-    .default("SRE console online. Ask me about incidents, services, or who's on call."),
+    .default("Hi, I'm Paige. Ask me about incidents, services, or who's on call."),
   systemPrompt: z.string().max(20000).optional(),
+  /**
+   * Appended verbatim to the end of the system prompt. Separate from
+   * `systemPrompt` so an operator can add a pronunciation rule or a house
+   * convention without taking ownership of the whole prompt and missing later
+   * improvements to it.
+   */
+  customInstructions: z.string().max(4000).optional(),
   maxDurationSeconds: z.number().int().min(60).max(3600).default(1800),
 });
 

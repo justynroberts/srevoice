@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { cellText, classify, type IncidentLike } from '../lib/inspect';
 import { relativeTime, TONE_CLASSES, toneFor, truncate } from '../lib/format';
+import { RichText } from './RichText';
 
 function Badge({ value }: { value: string | undefined }) {
   if (!value) return null;
@@ -99,11 +100,7 @@ export function DataView({ value }: { value: unknown }) {
       return <p className="py-2 text-[12px] italic text-ink-faint">No results.</p>;
 
     case 'text':
-      return (
-        <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-ink-dim">
-          {shape.text}
-        </p>
-      );
+      return <RichText text={shape.text} className="text-[12px] leading-relaxed text-ink-dim" />;
 
     case 'incidents':
       return (

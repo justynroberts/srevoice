@@ -151,7 +151,7 @@ function buildAgentBody(
         first_message: settings.agent.firstMessage,
         language: settings.agent.language,
         prompt: {
-          prompt: buildSystemPrompt(base, catalogue),
+          prompt: buildSystemPrompt(base, catalogue, settings.agent.customInstructions),
           llm: settings.agent.llm,
           temperature: settings.agent.temperature,
           max_tokens: -1,

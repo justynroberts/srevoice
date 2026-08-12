@@ -120,6 +120,7 @@ export interface SettingsView {
     language: string;
     firstMessage: string;
     systemPrompt?: string;
+    customInstructions?: string;
     maxDurationSeconds: number;
   };
   mcpServers: McpServerView[];

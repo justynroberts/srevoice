@@ -432,6 +432,17 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
                     hint="Keep it low. Incident answers should be boring and repeatable."
                   />
                   <TextArea
+                    label="Your own instructions"
+                    rows={5}
+                    value={settings.agent.customInstructions ?? ''}
+                    onChange={(e) =>
+                      patchSettings({ agent: { ...settings.agent, customInstructions: e.target.value } })
+                    }
+                    placeholder={'Pronounce SRE as S.R.E.\nAlways mention the service owner when you name a service.\nWe call production "prod", never "live".'}
+                    hint="Added to the end of the system prompt and given priority over it. Use this for pronunciation, house conventions, and anything you would otherwise repeat every session — it survives updates to the prompt below."
+                  />
+
+                  <TextArea
                     label="System prompt"
                     rows={14}
                     value={settings.agent.systemPrompt ?? defaultPrompt}

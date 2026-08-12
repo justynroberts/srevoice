@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useRef } from 'react';
 import type { Turn } from '../hooks/useSreConversation';
+import { RichText } from './RichText';
 
 const ROLE_STYLES: Record<Turn['role'], { wrap: string; label: string; body: string }> = {
   user: {
@@ -20,7 +21,7 @@ const ROLE_STYLES: Record<Turn['role'], { wrap: string; label: string; body: str
   },
 };
 
-export function Transcript({ turns }: { turns: Turn[] }) {
+export function Transcript({ turns, agentName }: { turns: Turn[]; agentName: string }) {
   const endRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
@@ -44,7 +45,7 @@ export function Transcript({ turns }: { turns: Turn[] }) {
   if (turns.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-        <p className="text-[13px] text-ink-dim">Nothing said yet.</p>
+        <p className="text-[13px] text-ink-dim">Say hello to {agentName}.</p>
         <p className="max-w-xs text-[12px] leading-relaxed text-ink-faint">
           Start the session and ask something like “what’s triggered right now?” or “who’s on call for
           checkout?”
@@ -72,14 +73,12 @@ export function Transcript({ turns }: { turns: Turn[] }) {
                   <span
                     className={`px-1 font-mono-tight text-[10px] uppercase tracking-wider ${style.label}`}
                   >
-                    {turn.role === 'user' ? 'You' : 'SRE'}
+                    {turn.role === 'user' ? 'You' : agentName}
                   </span>
                 )}
-                <p
-                  className={`max-w-[85%] whitespace-pre-wrap px-3.5 py-2 text-[13px] leading-relaxed ${style.body}`}
-                >
-                  {turn.text}
-                </p>
+                <div className={`max-w-[85%] px-3.5 py-2 text-[13px] leading-relaxed ${style.body}`}>
+                  <RichText text={turn.text} />
+                </div>
               </motion.div>
             );
           })}

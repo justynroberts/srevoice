@@ -5,25 +5,28 @@
  * neutral so status colour always means status, never decoration.
  */
 @theme {
-  --color-void: #0a0a0b;
-  --color-surface: #131315;
-  --color-raised: #1b1b1f;
-  --color-hover: #232328;
-  --color-line: #2c2c33;
-  --color-line-strong: #3a3a43;
+  /* Warm charcoals — brown-tinted rather than blue-grey, which reads softer
+     over long sessions than the colder original palette. */
+  --color-void: #14110f;
+  --color-surface: #1d1815;
+  --color-raised: #262019;
+  --color-hover: #322a22;
+  --color-line: #3b322a;
+  --color-line-strong: #4e4238;
 
-  --color-ink: #f5f5f7;
-  --color-ink-dim: #a1a1ab;
-  --color-ink-faint: #6b6b76;
+  --color-ink: #f6efe7;
+  --color-ink-dim: #b8aa9c;
+  --color-ink-faint: #857567;
 
-  --color-accent: #06d6a0;
-  --color-accent-dim: #04a97e;
-  --color-accent-glow: #06d6a026;
+  /* Coral, used only for interactive surfaces — never for status. */
+  --color-accent: #ff9068;
+  --color-accent-dim: #e8724a;
+  --color-accent-glow: #ff906826;
 
-  --color-critical: #ff4d4f;
-  --color-warn: #ffb020;
-  --color-info: #4d9fff;
-  --color-ok: #06d6a0;
+  --color-critical: #f4554f;
+  --color-warn: #f5b944;
+  --color-info: #6bb6ff;
+  --color-ok: #5fd68a;
 
   --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Spline Sans Mono', ui-monospace, 'SF Mono', monospace;
@@ -90,7 +93,27 @@
   .surface-card {
     background-color: var(--color-surface);
     border: 1px solid var(--color-line);
-    border-radius: 0.875rem;
+    border-radius: 1rem;
+  }
+
+  /* Fenced code inside speech or tool output. */
+  .code-block {
+    background-color: color-mix(in srgb, var(--color-void) 70%, transparent);
+    border: 1px solid var(--color-line);
+    border-radius: 0.625rem;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.65;
+    overflow-x: auto;
+    padding: 0.75rem 0.875rem;
+  }
+
+  .code-inline {
+    background-color: var(--color-hover);
+    border-radius: 0.3rem;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    padding: 0.1em 0.35em;
   }
 
   /* Long transcripts fade into the top edge instead of hard-clipping. */
