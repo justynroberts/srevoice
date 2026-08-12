@@ -31,9 +31,11 @@ const LLM_FALLBACK: LlmOption[] = [
   { id: 'gpt-4o', deprecated: false, sunsetting: false, replacement: null, supportsParallelToolCalls: true, maxContext: null },
 ];
 
+// English agents accept only the English-only v2 models — the _v2_5 editions
+// are multilingual and rejected at agent-create time.
 const TTS_FALLBACK = [
-  { id: 'eleven_flash_v2_5', name: 'Flash v2.5' },
-  { id: 'eleven_turbo_v2_5', name: 'Turbo v2.5' },
+  { id: 'eleven_flash_v2', name: 'Flash v2 (English)' },
+  { id: 'eleven_turbo_v2', name: 'Turbo v2 (English)' },
 ];
 
 /**

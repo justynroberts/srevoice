@@ -24,7 +24,7 @@ describe('SettingsStore', () => {
     const settings = await store.load();
     expect(settings.mcpServers).toEqual([]);
     expect(settings.elevenlabsApiKey).toBeUndefined();
-    expect(settings.voice.modelId).toBe('eleven_flash_v2_5');
+    expect(settings.voice.modelId).toBe('eleven_flash_v2');
   });
 
   it('persists across instances and never writes plaintext secrets', async () => {
