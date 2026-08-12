@@ -94,14 +94,36 @@ describe('normaliseToolParameters', () => {
 });
 
 describe('array items', () => {
-  it('supplies items for a bare array — ElevenLabs 422s without them', () => {
+  it('supplies described items for a bare array — ElevenLabs 422s without them', () => {
     const out = normaliseToolParameters({
       type: 'object',
       properties: { examples: { type: 'array' } },
     });
     const examples = (out.properties as Record<string, Record<string, unknown>>).examples;
     expect(examples.type).toBe('array');
-    expect(examples.items).toEqual({ type: 'string' });
+    // Items must carry a description or ElevenLabs rejects the whole tool.
+    expect(examples.items).toMatchObject({ type: 'string' });
+    expect(typeof (examples.items as Record<string, unknown>).description).toBe('string');
+  });
+
+  it('recovers items from an anyOf optional-array branch', () => {
+    // The exact shape that cost two PagerDuty tools: items live inside the
+    // anyOf branch, not on the node.
+    const out = normaliseToolParameters({
+      type: 'object',
+      properties: {
+        examples: {
+          anyOf: [{ items: { type: 'string' }, type: 'array' }, { type: 'null' }],
+          default: null,
+          description: 'Optional usage examples shown when the skill is loaded.',
+        },
+      },
+    });
+    const examples = (out.properties as Record<string, Record<string, unknown>>).examples;
+    expect(examples.type).toBe('array');
+    const items = examples.items as Record<string, unknown>;
+    expect(items.type).toBe('string');
+    expect(items.description).toContain('Optional usage examples');
   });
 
   it('still normalises declared items', () => {

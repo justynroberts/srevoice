@@ -44,6 +44,26 @@ function firstConcreteType(node: JsonSchemaLike): string | undefined {
   return undefined;
 }
 
+/**
+ * `{"anyOf": [{"type": "array", "items": {...}}, {"type": "null"}]}` is how
+ * MCP servers spell an optional list. The type resolves through `anyOf`, but
+ * `items` stays behind in the branch — recover it so the array is not left
+ * item-less.
+ */
+function unwrapArrayBranch(node: JsonSchemaLike): unknown {
+  for (const key of ['anyOf', 'oneOf', 'allOf'] as const) {
+    const branches = node[key];
+    if (!Array.isArray(branches)) continue;
+    for (const branch of branches) {
+      if (branch && typeof branch === 'object') {
+        const candidate = branch as JsonSchemaLike;
+        if (candidate.type === 'array' && candidate.items !== undefined) return candidate.items;
+      }
+    }
+  }
+  return undefined;
+}
+
 function normaliseNode(input: unknown, depth: number): Record<string, unknown> {
   if (!input || typeof input !== 'object') return { type: 'string' };
   const node = input as JsonSchemaLike;
@@ -84,10 +104,20 @@ function normaliseNode(input: unknown, depth: number): Record<string, unknown> {
   }
 
   if (type === 'array') {
-    // ElevenLabs rejects an array with no `items` (422). MCP servers do emit
-    // bare `{"type": "array"}`, so default to string items rather than losing
-    // the whole tool over it.
-    out.items = node.items === undefined ? { type: 'string' } : normaliseNode(node.items, depth + 1);
+    // ElevenLabs rejects an array whose `items` lacks a description:
+    // "Must set one of: description, dynamic_variable, is_system_provided,
+    // constant_value, or is_omitted" (422). MCP servers routinely omit both
+    // the items schema and its description — most often when the array is one
+    // branch of an `anyOf`, where `items` sits inside the branch rather than
+    // on the node — so synthesise whatever is missing rather than losing the
+    // whole tool.
+    const items = normaliseNode(node.items ?? unwrapArrayBranch(node), depth + 1);
+    if (typeof items.description !== 'string' || !items.description) {
+      items.description = out.description
+        ? `An entry in: ${String(out.description)}`
+        : 'A single item in the list.';
+    }
+    out.items = items;
   }
 
   return out;
