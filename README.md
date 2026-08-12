@@ -49,7 +49,14 @@ npm run docker:up           # single container on :5280
 
 1. Open the console and go to **Settings → Connections**.
 2. Paste your **ElevenLabs API key** (needs Agents access) and hit *Test key*.
-3. Add your MCP servers. PagerDuty's hosted endpoint is `https://mcp.pagerduty.com/mcp` with an `Authorization: Bearer <token>` header. The *reference* you give each server prefixes its tool names, so keep it short — `pd`, `sre`.
+3. Add your MCP servers. PagerDuty hosts two, both authenticated with the **same** User API token:
+
+   | Reference | Endpoint | |
+   |---|---|---|
+   | `pd` | `https://mcp.pagerduty.com/mcp` | core |
+   | `pdx` | `https://mcp.pagerduty.com/pagerduty-advance-mcp` | advanced |
+
+   The header is `Authorization: Token token=<your-key>` — PagerDuty's scheme, **not** `Bearer`. The *reference* prefixes every tool name from that server, so keep it short.
 4. Hit **Save & provision agent**. This connects to each MCP server, reads its tool list, registers one ElevenLabs client tool per MCP tool, and builds an agent that references them all.
 5. Close Settings and hit **Start session**. Allow the microphone.
 

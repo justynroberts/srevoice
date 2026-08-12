@@ -151,7 +151,7 @@ export function McpServerEditor({ draft, status, onChange, onRemove, onReconnect
         value={draft.url}
         onChange={(e) => patch({ url: e.target.value })}
         placeholder="https://mcp.pagerduty.com/mcp"
-        hint="Streamable HTTP is tried first, then SSE."
+        hint="PagerDuty: /mcp is core, /pagerduty-advance-mcp is advanced. Both take the same key as Authorization: Token token=…"
       />
 
       <div>
@@ -184,7 +184,9 @@ export function McpServerEditor({ draft, status, onChange, onRemove, onReconnect
                     autoComplete="off"
                     value={header.value ?? ''}
                     onChange={(e) => setHeader(i, header.key, e.target.value)}
-                    placeholder={header.preview ? `${header.preview} — leave blank to keep` : 'Bearer …'}
+                    placeholder={
+                      header.preview ? `${header.preview} — leave blank to keep` : 'Token token=…'
+                    }
                   />
                 </div>
                 <Button
