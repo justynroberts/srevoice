@@ -45,35 +45,55 @@ function firstConcreteType(node: JsonSchemaLike): string | undefined {
 }
 
 /**
- * `{"anyOf": [{"type": "array", "items": {...}}, {"type": "null"}]}` is how
- * MCP servers spell an optional list. The type resolves through `anyOf`, but
- * `items` stays behind in the branch — recover it so the array is not left
- * item-less.
+ * `{"anyOf": [{"type": "array", "items": {...}}, {"type": "null"}]}` is how MCP
+ * servers spell an optional value. The type resolves through `anyOf`, but the
+ * shape — `items` for a list, `properties` for an object — stays behind in the
+ * branch. Recover it so the node is not left empty.
  */
-function unwrapArrayBranch(node: JsonSchemaLike): unknown {
+function unwrapBranch(
+  node: JsonSchemaLike,
+  wantType: 'array' | 'object',
+  field: 'items' | 'properties',
+): unknown {
   for (const key of ['anyOf', 'oneOf', 'allOf'] as const) {
     const branches = node[key];
     if (!Array.isArray(branches)) continue;
     for (const branch of branches) {
       if (branch && typeof branch === 'object') {
         const candidate = branch as JsonSchemaLike;
-        if (candidate.type === 'array' && candidate.items !== undefined) return candidate.items;
+        if (candidate.type === wantType && candidate[field] !== undefined) return candidate[field];
       }
     }
   }
   return undefined;
 }
 
-function normaliseNode(input: unknown, depth: number): Record<string, unknown> {
-  if (!input || typeof input !== 'object') return { type: 'string' };
+/** `escalation_policy_id` → "Escalation policy id" — a usable last-resort description. */
+function humanise(name: string): string {
+  const words = name.replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim();
+  if (!words) return '';
+  return words.charAt(0).toUpperCase() + words.slice(1).toLowerCase();
+}
+
+/**
+ * `name` is the property this node was reached through, used only to synthesise
+ * a description when the schema omits one.
+ */
+function normaliseNode(input: unknown, depth: number, name = ''): Record<string, unknown> {
+  if (!input || typeof input !== 'object') {
+    return { type: 'string', description: describe(undefined, name) };
+  }
   const node = input as JsonSchemaLike;
 
   const type = firstConcreteType(node) ?? 'string';
   const out: Record<string, unknown> = { type };
 
-  if (typeof node.description === 'string' && node.description.trim()) {
-    out.description = node.description.trim().slice(0, 500);
-  }
+  // ElevenLabs requires a description on *every* node, at any nesting depth:
+  // "Must set one of: description, dynamic_variable, is_system_provided,
+  // constant_value, or is_omitted" (422). MCP servers commonly describe the
+  // top-level parameters and leave nested ones bare, which would cost the
+  // whole tool — so synthesise one from the property name.
+  out.description = describe(node.description, name);
   if (Array.isArray(node.enum) && node.enum.length > 0) {
     out.enum = node.enum.filter((v) => ['string', 'number', 'boolean'].includes(typeof v)).slice(0, 50);
     if ((out.enum as unknown[]).length === 0) delete out.enum;
@@ -90,11 +110,14 @@ function normaliseNode(input: unknown, depth: number): Record<string, unknown> {
   }
 
   if (type === 'object') {
-    const props = node.properties;
+    // `properties` can also sit inside an anyOf branch, same as `items`.
+    const props = (node.properties ?? unwrapBranch(node, 'object', 'properties')) as
+      | Record<string, unknown>
+      | undefined;
     const properties: Record<string, unknown> = {};
     if (props && typeof props === 'object') {
-      for (const [key, value] of Object.entries(props as Record<string, unknown>)) {
-        properties[key] = normaliseNode(value, depth + 1);
+      for (const [key, value] of Object.entries(props)) {
+        properties[key] = normaliseNode(value, depth + 1, key);
       }
     }
     out.properties = properties;
@@ -104,23 +127,18 @@ function normaliseNode(input: unknown, depth: number): Record<string, unknown> {
   }
 
   if (type === 'array') {
-    // ElevenLabs rejects an array whose `items` lacks a description:
-    // "Must set one of: description, dynamic_variable, is_system_provided,
-    // constant_value, or is_omitted" (422). MCP servers routinely omit both
-    // the items schema and its description — most often when the array is one
-    // branch of an `anyOf`, where `items` sits inside the branch rather than
-    // on the node — so synthesise whatever is missing rather than losing the
-    // whole tool.
-    const items = normaliseNode(node.items ?? unwrapArrayBranch(node), depth + 1);
-    if (typeof items.description !== 'string' || !items.description) {
-      items.description = out.description
-        ? `An entry in: ${String(out.description)}`
-        : 'A single item in the list.';
-    }
-    out.items = items;
+    // `items` is often left behind in an anyOf branch when a list is optional.
+    const items = node.items ?? unwrapBranch(node, 'array', 'items');
+    out.items = normaliseNode(items, depth + 1, name ? `${name} entry` : 'item');
   }
 
   return out;
+}
+
+function describe(existing: unknown, name: string): string {
+  if (typeof existing === 'string' && existing.trim()) return existing.trim().slice(0, 500);
+  const humanised = humanise(name);
+  return humanised || 'No description provided.';
 }
 
 /** Always returns an object schema — ElevenLabs rejects a bare scalar root. */

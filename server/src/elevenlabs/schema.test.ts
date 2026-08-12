@@ -123,7 +123,11 @@ describe('array items', () => {
     expect(examples.type).toBe('array');
     const items = examples.items as Record<string, unknown>;
     expect(items.type).toBe('string');
-    expect(items.description).toContain('Optional usage examples');
+    // Items are described from the property name, so the text stays stable
+    // whether or not the parent carried a description.
+    expect(items.description).toBe('Examples entry');
+    // The parent keeps the description the MCP server actually supplied.
+    expect(examples.description).toContain('Optional usage examples');
   });
 
   it('still normalises declared items', () => {
@@ -133,5 +137,90 @@ describe('array items', () => {
     });
     const ids = (out.properties as Record<string, Record<string, unknown>>).ids;
     expect(ids.items).toMatchObject({ type: 'integer' });
+  });
+});
+
+describe('descriptions are mandatory everywhere', () => {
+  /** Walks the normalised schema and collects any node missing a description. */
+  function undescribed(node: unknown, path = 'root'): string[] {
+    if (!node || typeof node !== 'object') return [];
+    const n = node as Record<string, unknown>;
+    const missing: string[] = [];
+    if (typeof n.type === 'string') {
+      const d = n.description;
+      if (typeof d !== 'string' || !d.trim()) missing.push(path);
+    }
+    if (n.properties && typeof n.properties === 'object') {
+      for (const [k, v] of Object.entries(n.properties as Record<string, unknown>)) {
+        missing.push(...undescribed(v, `${path}.${k}`));
+      }
+    }
+    if (n.items) missing.push(...undescribed(n.items, `${path}[]`));
+    return missing;
+  }
+
+  it('describes deeply nested object properties', () => {
+    // The exact shape that cost four PagerDuty tools: create_model.schedule.type
+    // and create_model.team.name were bare.
+    const out = normaliseToolParameters({
+      type: 'object',
+      properties: {
+        create_model: {
+          type: 'object',
+          properties: {
+            schedule: {
+              type: 'object',
+              properties: { type: { type: 'string' }, name: { type: 'string' } },
+            },
+          },
+        },
+      },
+    });
+    expect(undescribed(out)).toEqual([]);
+
+    const create = (out.properties as Record<string, Record<string, unknown>>).create_model;
+    const schedule = (create.properties as Record<string, Record<string, unknown>>).schedule;
+    const type = (schedule.properties as Record<string, Record<string, unknown>>).type;
+    expect(type.description).toBe('Type');
+  });
+
+  it('derives readable text from snake_case and camelCase names', () => {
+    const out = normaliseToolParameters({
+      type: 'object',
+      properties: {
+        escalation_policy_id: { type: 'string' },
+        incidentNumber: { type: 'integer' },
+      },
+    });
+    const props = out.properties as Record<string, Record<string, unknown>>;
+    expect(props.escalation_policy_id.description).toBe('Escalation policy id');
+    expect(props.incidentNumber.description).toBe('Incident number');
+  });
+
+  it('never leaves a node bare, whatever the shape', () => {
+    const out = normaliseToolParameters({
+      type: 'object',
+      properties: {
+        bare_array: { type: 'array' },
+        optional_list: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] },
+        optional_object: {
+          anyOf: [{ type: 'object', properties: { id: { type: 'string' } } }, { type: 'null' }],
+        },
+        deep: {
+          type: 'object',
+          properties: { a: { type: 'object', properties: { b: { type: 'array' } } } },
+        },
+      },
+    });
+    expect(undescribed(out)).toEqual([]);
+  });
+
+  it('keeps a real description over a synthesised one', () => {
+    const out = normaliseToolParameters({
+      type: 'object',
+      properties: { status: { type: 'string', description: 'Current incident status.' } },
+    });
+    const props = out.properties as Record<string, Record<string, unknown>>;
+    expect(props.status.description).toBe('Current incident status.');
   });
 });
