@@ -50,9 +50,7 @@ function MicToggle({ muted, onToggle }: { muted: boolean; onToggle: () => void }
       aria-label={muted ? 'Microphone is off. Turn it back on.' : 'Microphone is on. Mute it and type instead.'}
       title={muted ? 'Mic is off — type below' : 'Mute the mic and type instead'}
       className={`press relative inline-flex min-h-[2.75rem] items-center gap-2 rounded-xl border px-4 py-2.5 text-[14px] font-medium ${
-        muted
-          ? 'mic-off border-warn/40 bg-warn/10 text-warn'
-          : 'mic-live border-accent/40 bg-accent/10 text-accent'
+        muted ? 'border-warn/40 bg-warn/10 text-warn' : 'border-accent/40 bg-accent/10 text-accent'
       }`}
     >
       <MicIcon off={muted} />
@@ -279,7 +277,7 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
                       ? `Mic is off — type to ${agentName}`
                       : `Type to ${agentName} instead of speaking…`
                 }
-                className={`press min-h-[2.75rem] flex-1 rounded-xl border bg-void px-4 py-2.5 text-[14px] text-ink placeholder:text-ink-faint focus:outline-none disabled:opacity-50 ${
+                className={`min-h-[2.75rem] flex-1 rounded-xl border bg-void px-4 py-2.5 text-[14px] text-ink transition-colors placeholder:text-ink-faint focus:outline-none disabled:opacity-50 ${
                   isMuted && live ? 'border-warn/50' : 'border-line focus:border-accent'
                 }`}
               />

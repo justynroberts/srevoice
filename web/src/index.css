@@ -159,6 +159,9 @@
   .mask-fade-top {
     mask-image: linear-gradient(to bottom, transparent, black 3rem);
     -webkit-mask-image: linear-gradient(to bottom, transparent, black 3rem);
+    /* The browser's own scroll anchoring fights our pin-to-bottom as content
+       grows, and the two corrections land on different frames. */
+    overflow-anchor: none;
   }
 
   /* Shared feel for anything clickable: lifts a little, presses in properly.
@@ -178,44 +181,9 @@
     transition-duration: 60ms;
   }
 
-  /* A live microphone. The ring expands and fades on a slow cycle so it reads
-     as "listening" from the corner of the eye without demanding attention. */
-  .mic-live::after {
-    content: '';
-    position: absolute;
-    inset: -3px;
-    border-radius: inherit;
-    border: 2px solid var(--color-accent);
-    animation: mic-ring 2.4s cubic-bezier(0.3, 0, 0.2, 1) infinite;
-    pointer-events: none;
-  }
-
-  @keyframes mic-ring {
-    0% {
-      opacity: 0.55;
-      transform: scale(1);
-    }
-    70%,
-    100% {
-      opacity: 0;
-      transform: scale(1.35);
-    }
-  }
-
-  /* Muted: a slow breath, so the control never looks simply dead. */
-  .mic-off {
-    animation: mic-breathe 3s ease-in-out infinite;
-  }
-
-  @keyframes mic-breathe {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.72;
-    }
-  }
+  /* The mic state is carried by colour and the slashed glyph, not by motion.
+     A control that pulses on a permanent loop sits in peripheral vision for
+     the whole session and reads as flicker rather than as information. */
 
   /* New results arriving in the side panel. */
   .rise-in {

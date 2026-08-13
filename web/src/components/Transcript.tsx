@@ -39,20 +39,27 @@ export function Transcript({ turns, agentName }: { turns: Turn[]; agentName: str
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
+  // Same instant behaviour as the observer below, so the two can never be
+  // animating the same scrollTop against each other. Kept as a fallback for
+  // browsers without ResizeObserver, where it is the only thing scrolling.
   useEffect(() => {
-    if (pinnedRef.current) endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    if (pinnedRef.current) endRef.current?.scrollIntoView({ block: 'end' });
   }, [turns]);
 
   // A turn keeps growing after it first renders — speech arrives in fragments
   // and the layout animation settles a frame later — so scrolling once when
   // `turns` changes lands short of the bottom on anything long. Following the
   // height keeps the newest words on screen as they appear.
+  //
+  // Deliberately instant rather than smooth, and the only thing that scrolls:
+  // a smooth scroll that is restarted by every resize tick never arrives, and
+  // two effects animating the same scrollTop is what jitter is made of. While
+  // text streams in, snapping to the bottom each frame reads as the text
+  // growing in place, which is the smoother illusion.
   useEffect(() => {
     const content = contentRef.current;
     if (!content || typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver(() => {
-      // Instant, not smooth: a smooth scroll restarted on every resize tick
-      // never arrives.
       if (pinnedRef.current) endRef.current?.scrollIntoView({ block: 'end' });
     });
     observer.observe(content);

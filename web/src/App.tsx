@@ -11,6 +11,32 @@ interface Bootstrap {
   agentName: string;
 }
 
+/**
+ * The health poll returns freshly allocated arrays every 30 seconds, so
+ * storing its result unconditionally re-rendered the whole console on a timer
+ * even when nothing had changed. Every transcript turn and tool card carries a
+ * Framer `layout` prop, which re-measures on each render — visible as a
+ * periodic flicker. Compare on the fields that are actually rendered and keep
+ * the previous object when they match, so React can bail out.
+ */
+function sameBootstrap(a: Bootstrap | null, b: Bootstrap): boolean {
+  if (!a) return false;
+  if (a.agentName !== b.agentName) return false;
+  if (a.tools.length !== b.tools.length || a.tools.some((t, i) => t !== b.tools[i])) return false;
+  if (a.statuses.length !== b.statuses.length) return false;
+  return a.statuses.every((s, i) => {
+    const o = b.statuses[i];
+    return (
+      s.id === o.id &&
+      s.state === o.state &&
+      s.enabled === o.enabled &&
+      s.toolCount === o.toolCount &&
+      s.error === o.error &&
+      s.label === o.label
+    );
+  });
+}
+
 export default function App() {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [error, setError] = useState<{ message: string; unauthorised: boolean } | null>(null);
@@ -39,11 +65,14 @@ export default function App() {
         api.get<{ servers: ServerStatus[] }>('/api/mcp/status'),
         api.get<{ settings: { agent: { name: string } } }>('/api/settings'),
       ]);
-      setBoot((prev) => ({
-        tools: adoptTools || !prev ? catalogue.tools.map((t) => t.name) : prev.tools,
-        statuses: status.servers,
-        agentName: settings.settings.agent.name || 'Paige',
-      }));
+      setBoot((prev) => {
+        const next: Bootstrap = {
+          tools: adoptTools || !prev ? catalogue.tools.map((t) => t.name) : prev.tools,
+          statuses: status.servers,
+          agentName: settings.settings.agent.name || 'Paige',
+        };
+        return sameBootstrap(prev, next) ? prev : next;
+      });
       setError(null);
     } catch (err) {
       const unauthorised = err instanceof ApiError && err.status === 401;
