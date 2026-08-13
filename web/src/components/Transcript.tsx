@@ -24,6 +24,7 @@ const ROLE_STYLES: Record<Turn['role'], { wrap: string; label: string; body: str
 export function Transcript({ turns, agentName }: { turns: Turn[]; agentName: string }) {
   const endRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
 
   // Only autoscroll while the reader is at the bottom — yanking them back down
@@ -42,21 +43,36 @@ export function Transcript({ turns, agentName }: { turns: Turn[]; agentName: str
     if (pinnedRef.current) endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [turns]);
 
-  if (turns.length === 0) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-        <p className="text-[13px] text-ink-dim">Say hello to {agentName}.</p>
-        <p className="max-w-xs text-[12px] leading-relaxed text-ink-faint">
-          Start the session and ask something like “what’s triggered right now?” or “who’s on call for
-          checkout?”
-        </p>
-      </div>
-    );
-  }
+  // A turn keeps growing after it first renders — speech arrives in fragments
+  // and the layout animation settles a frame later — so scrolling once when
+  // `turns` changes lands short of the bottom on anything long. Following the
+  // height keeps the newest words on screen as they appear.
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => {
+      // Instant, not smooth: a smooth scroll restarted on every resize tick
+      // never arrives.
+      if (pinnedRef.current) endRef.current?.scrollIntoView({ block: 'end' });
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
 
   return (
+    // The container renders even when empty so the scroll listener and resize
+    // observer above attach on first mount rather than never.
     <div ref={containerRef} className="mask-fade-top h-full overflow-y-auto px-4 py-4">
-      <div className="flex flex-col gap-3">
+      {turns.length === 0 && (
+        <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+          <p className="text-[13px] text-ink-dim">Say hello to {agentName}.</p>
+          <p className="max-w-xs text-[12px] leading-relaxed text-ink-faint">
+            Start the session and ask something like “what’s triggered right now?” or “who’s on call
+            for checkout?”
+          </p>
+        </div>
+      )}
+      <div ref={contentRef} className="flex flex-col gap-3">
         <AnimatePresence initial={false}>
           {turns.map((turn) => {
             const style = ROLE_STYLES[turn.role];

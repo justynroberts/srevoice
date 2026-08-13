@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useSreConversation } from '../hooks/useSreConversation';
 import { useTheme } from '../hooks/useTheme';
 import type { ServerStatus } from '../lib/api';
@@ -70,6 +70,20 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
 
   const live = phase === 'live';
   const running = toolCalls.filter((c) => c.status === 'running').length;
+
+  // Newest first. Built explicitly rather than with `flex-col-reverse`, which
+  // reverses the paint order but leaves the scroll container anchored to the
+  // flex start — i.e. parked on the oldest call, with every new result landing
+  // off-screen above it.
+  const newest = toolCalls.length > 0 ? toolCalls[toolCalls.length - 1] : undefined;
+  const ordered = [...toolCalls].reverse();
+
+  const resultsRef = useRef<HTMLDivElement>(null);
+  // A new call arrives at the top, so the top is where the eye needs to be.
+  // Results that fill in later grow downwards from there and stay in view.
+  useEffect(() => {
+    if (newest) resultsRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [newest?.id]);
 
   // Something new arrived while the panel was shut — worth a nudge.
   const unseen = !panelOpen && toolCalls.length > 0;
@@ -256,7 +270,7 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
           </button>
 
           {panelOpen && (
-            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            <div ref={resultsRef} className="min-h-0 flex-1 overflow-y-auto p-3">
               {toolCalls.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
                   <p className="text-[13px] text-ink-dim">Nothing looked up yet.</p>
@@ -266,9 +280,9 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
                   </p>
                 </div>
               ) : (
-                <div className="flex flex-col-reverse gap-2.5">
-                  {toolCalls.map((call, i) => (
-                    <ToolCallCard key={call.id} call={call} defaultOpen={i === toolCalls.length - 1} />
+                <div className="flex flex-col gap-2.5">
+                  {ordered.map((call, i) => (
+                    <ToolCallCard key={call.id} call={call} defaultOpen={i === 0} />
                   ))}
                 </div>
               )}
