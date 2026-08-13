@@ -62,6 +62,9 @@ function IncidentRow({ incident }: { incident: IncidentLike }) {
   );
 }
 
+/** Long, or carrying Markdown structure — either way it reads better parsed. */
+const LOOKS_LIKE_PROSE = /\n|^.{120,}$|^[-*] |^#{1,6} |\|.*\|/s;
+
 function JsonBlock({ value }: { value: unknown }) {
   const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
   const [expanded, setExpanded] = useState(text.length < 1200);
@@ -112,6 +115,16 @@ export function DataView({ value }: { value: unknown }) {
 
     case 'text':
       return <RichText text={shape.text} className="text-[12px] leading-relaxed text-ink-dim" />;
+
+    case 'lines':
+      // Joined so a multi-line Markdown document split across array entries
+      // still parses as one document — lists and tables span entries.
+      return (
+        <RichText
+          text={shape.lines.join('\n')}
+          className="text-[12px] leading-relaxed text-ink-dim"
+        />
+      );
 
     case 'incidents':
       return (
@@ -172,11 +185,14 @@ export function DataView({ value }: { value: unknown }) {
               <dt className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
                 {key.replace(/_/g, ' ')}
               </dt>
-              <dd className="min-w-0 break-words font-mono-tight text-[12px] text-ink-dim">
+              <dd className="min-w-0 break-words text-[12px] text-ink-dim">
                 {typeof val === 'object' && val !== null ? (
                   <JsonBlock value={val} />
+                ) : typeof val === 'string' && LOOKS_LIKE_PROSE.test(val) ? (
+                  // Long or Markdown-ish values are messages, not cell data.
+                  <RichText text={val} />
                 ) : (
-                  cellText(val)
+                  <span className="font-mono-tight">{cellText(val)}</span>
                 )}
               </dd>
             </div>

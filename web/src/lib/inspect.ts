@@ -21,6 +21,7 @@ export interface IncidentLike {
 export type Shape =
   | { kind: 'empty' }
   | { kind: 'titled'; title: string; note?: string; inner: unknown }
+  | { kind: 'lines'; lines: string[] }
   | { kind: 'text'; text: string }
   | { kind: 'incidents'; incidents: IncidentLike[]; total: number }
   | { kind: 'table'; rows: Record<string, unknown>[]; columns: string[] }
@@ -124,6 +125,12 @@ export function classify(value: unknown): Shape {
   const collection = findCollection(value);
   if (collection) {
     if (collection.length === 0) return { kind: 'empty' };
+
+    // A list of strings is prose, not data. Rendering it as a JSON array —
+    // quoted, escaped, bracketed — is the single least readable option.
+    if (collection.every((c) => typeof c === 'string')) {
+      return { kind: 'lines', lines: collection as string[] };
+    }
 
     const records = collection.filter((r): r is Record<string, unknown> => asRecord(r) !== null);
 
