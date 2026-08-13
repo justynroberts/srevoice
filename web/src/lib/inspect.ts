@@ -26,7 +26,82 @@ export type Shape =
   | { kind: 'incidents'; incidents: IncidentLike[]; total: number }
   | { kind: 'table'; rows: Record<string, unknown>[]; columns: string[] }
   | { kind: 'object'; entries: [string, unknown][] }
+  | { kind: 'http'; status: number; ok: boolean; summary: string; body: unknown; headers: [string, unknown][] }
   | { kind: 'json'; value: unknown };
+
+/**
+ * What a status code means to someone who does not read status codes. The
+ * point is a person can tell at a glance whether the thing they asked for
+ * happened.
+ */
+const STATUS_TEXT: Record<number, string> = {
+  200: 'Worked',
+  201: 'Created',
+  202: 'Accepted — running now',
+  204: 'Done, nothing to show',
+  400: "Rundeck did not understand the request",
+  401: 'Not signed in — the token was rejected',
+  403: 'Not allowed — the token lacks permission',
+  404: 'Not found',
+  405: 'That endpoint does not accept this method',
+  409: 'Conflicted with something already there',
+  415: 'Wrong content type for this endpoint',
+  422: 'Rejected as invalid',
+  429: 'Rate limited — too many requests',
+  500: 'The server errored',
+  502: 'Bad gateway',
+  503: 'Service unavailable',
+  504: 'The server timed out',
+};
+
+function statusSummary(status: number): string {
+  const known = STATUS_TEXT[status];
+  if (known) return known;
+  if (status < 300) return 'Worked';
+  if (status < 400) return 'Redirected';
+  if (status < 500) return 'Request rejected';
+  return 'Server error';
+}
+
+/**
+ * Tool output frequently arrives as a JSON document inside a string. Left as a
+ * string it renders as a wall of escaped punctuation, so parse it and let the
+ * normal shape detection do its job.
+ */
+function parseIfJson(text: string): unknown {
+  const trimmed = text.trim();
+  if (trimmed.length < 2) return undefined;
+  const first = trimmed[0];
+  if (first !== '{' && first !== '[') return undefined;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A raw HTTP envelope — `{ status, headers, body }` — as returned by generic
+ * API-call tools. Nobody wants to read twenty response headers to find out a
+ * request returned 200.
+ */
+function asHttpEnvelope(rec: Record<string, unknown>): Shape | null {
+  const status = rec.status;
+  if (typeof status !== 'number' || status < 100 || status > 599) return null;
+  if (!('headers' in rec) && !('body' in rec) && !('data' in rec)) return null;
+
+  const headers = asRecord(rec.headers);
+  const body = 'body' in rec ? rec.body : rec.data;
+
+  return {
+    kind: 'http',
+    status,
+    ok: status < 400,
+    summary: statusSummary(status),
+    body: typeof body === 'string' ? (parseIfJson(body) ?? body) : body,
+    headers: headers ? Object.entries(headers) : [],
+  };
+}
 
 const INCIDENT_KEYS = ['incident_number', 'incidents', 'incident_key'];
 
@@ -119,7 +194,15 @@ export function classify(value: unknown): Shape {
   }
 
   if (typeof value === 'string') {
+    // A JSON document that merely arrived as a string is still data.
+    const parsed = parseIfJson(value);
+    if (parsed !== undefined) return classify(parsed);
     return { kind: 'text', text: value };
+  }
+
+  if (rec0) {
+    const http = asHttpEnvelope(rec0);
+    if (http) return http;
   }
 
   const collection = findCollection(value);

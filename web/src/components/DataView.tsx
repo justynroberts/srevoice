@@ -65,9 +65,12 @@ function IncidentRow({ incident }: { incident: IncidentLike }) {
 /** Long, or carrying Markdown structure — either way it reads better parsed. */
 const LOOKS_LIKE_PROSE = /\n|^.{120,}$|^[-*] |^#{1,6} |\|.*\|/s;
 
+/** Past this, raw JSON is something you opt into rather than something shown to you. */
+const JSON_PEEK_LIMIT = 600;
+
 function JsonBlock({ value }: { value: unknown }) {
   const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-  const [expanded, setExpanded] = useState(text.length < 1200);
+  const [expanded, setExpanded] = useState(text.length < JSON_PEEK_LIMIT);
 
   return (
     <div className="relative">
@@ -78,14 +81,76 @@ function JsonBlock({ value }: { value: unknown }) {
       >
         {text}
       </pre>
-      {text.length >= 1200 && (
+      {text.length >= JSON_PEEK_LIMIT && (
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
           className="mt-1.5 text-[11px] font-medium text-accent transition-opacity hover:opacity-80"
         >
-          {expanded ? 'Collapse' : `Show all ${text.length.toLocaleString()} characters`}
+          {expanded ? 'Hide the raw data' : `Show the raw data (${text.length.toLocaleString()} characters)`}
         </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * An HTTP result, said the way a person would say it. The status line carries
+ * the whole answer for most calls; headers are noise until they are not, so
+ * they are one click away rather than on screen.
+ */
+function HttpResult({
+  status,
+  ok,
+  summary,
+  body,
+  headers,
+}: {
+  status: number;
+  ok: boolean;
+  summary: string;
+  body: unknown;
+  headers: [string, unknown][];
+}) {
+  const [showHeaders, setShowHeaders] = useState(false);
+  const emptyBody = body === null || body === undefined || body === '';
+
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${ok ? 'bg-ok' : 'bg-critical'}`} aria-hidden />
+        <span className={`text-[13px] font-medium ${ok ? 'text-ink' : 'text-critical'}`}>{summary}</span>
+        <span className="font-mono-tight text-[10px] text-ink-faint">{status}</span>
+      </div>
+
+      {!emptyBody && (
+        <div className="mt-2.5">
+          <DataView value={body} />
+        </div>
+      )}
+
+      {headers.length > 0 && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setShowHeaders((s) => !s)}
+            className="text-[11px] font-medium text-ink-faint transition-colors hover:text-accent"
+          >
+            {showHeaders ? 'Hide response headers' : `Response headers (${headers.length})`}
+          </button>
+          {showHeaders && (
+            <dl className="mt-1.5 grid gap-x-3 gap-y-1 sm:grid-cols-[minmax(8rem,auto)_1fr]">
+              {headers.map(([key, val]) => (
+                <div key={key} className="contents">
+                  <dt className="font-mono-tight text-[10px] text-ink-faint">{key}</dt>
+                  <dd className="min-w-0 break-words font-mono-tight text-[10px] text-ink-dim">
+                    {cellText(val)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
       )}
     </div>
   );
@@ -198,6 +263,17 @@ export function DataView({ value }: { value: unknown }) {
             </div>
           ))}
         </dl>
+      );
+
+    case 'http':
+      return (
+        <HttpResult
+          status={shape.status}
+          ok={shape.ok}
+          summary={shape.summary}
+          body={shape.body}
+          headers={shape.headers}
+        />
       );
 
     case 'json':
