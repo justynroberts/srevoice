@@ -335,6 +335,11 @@ export function useSreConversation() {
       // onConnect is what moves the phase to 'live'.
       conversation.startSession({ signedUrl: session.signedUrl });
 
+      // Every session opens listening. Mute is a decision about the room you
+      // are in right now, so it should not be inherited from the last one —
+      // starting muted looks exactly like a session that failed to connect.
+      conversation.setMuted(false);
+
       // Sent as context rather than baked into the prompt at provision time, so
       // something learned an hour ago is available without re-provisioning.
       if (briefing.text) {

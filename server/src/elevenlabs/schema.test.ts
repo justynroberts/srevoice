@@ -223,4 +223,57 @@ describe('descriptions are mandatory everywhere', () => {
     const props = out.properties as Record<string, Record<string, unknown>>;
     expect(props.status.description).toBe('Current incident status.');
   });
+
+  describe('unions that include a string branch', () => {
+    // Rundeck's api_call declares `body` as anyOf [object, array, string].
+    // Taking the first branch told ElevenLabs the body was an object, so the
+    // agent could not send a YAML document and reported job import as
+    // impossible. A string can carry the other branches serialised; the
+    // reverse is not true.
+    const bodySchema = {
+      type: 'object',
+      properties: {
+        body: {
+          anyOf: [{ type: 'object' }, { type: 'array' }, { type: 'string' }],
+          description: 'Request body.',
+        },
+      },
+    };
+
+    it('keeps the string branch so raw payloads can still be sent', () => {
+      const props = normaliseToolParameters(bodySchema).properties as Record<
+        string,
+        Record<string, unknown>
+      >;
+      expect(props.body.type).toBe('string');
+    });
+
+    it('tells the agent the string has to be serialised', () => {
+      const props = normaliseToolParameters(bodySchema).properties as Record<
+        string,
+        Record<string, unknown>
+      >;
+      expect(props.body.description).toMatch(/serialise JSON yourself/i);
+      expect((props.body.description as string).length).toBeLessThanOrEqual(500);
+    });
+
+    it('leaves the optional-value idiom alone', () => {
+      // `[array, null]` and `[object, null]` have one concrete type each and
+      // must keep it — collapsing those to string would break every optional
+      // list and nested object in the catalogue.
+      const props = normaliseToolParameters({
+        type: 'object',
+        properties: {
+          ids: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] },
+          filter: { anyOf: [{ type: 'object', properties: { q: { type: 'string' } } }, { type: 'null' }] },
+          note: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        },
+      }).properties as Record<string, Record<string, unknown>>;
+
+      expect(props.ids.type).toBe('array');
+      expect(props.filter.type).toBe('object');
+      expect(props.note.type).toBe('string');
+      expect(props.note.description).not.toMatch(/serialise/i);
+    });
+  });
 });

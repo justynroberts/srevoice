@@ -187,22 +187,92 @@ export function Toggle({
   );
 }
 
+/**
+ * Inline rather than an icon package: there are a dozen of them, they need to
+ * inherit `currentColor` to work in both themes, and a dependency for this
+ * would ship a few thousand glyphs to render twelve.
+ */
+function Glyph({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      className={`h-[1.15rem] w-[1.15rem] shrink-0 ${className}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {children}
+    </svg>
+  );
+}
+
+export const Icon = {
+  play: () => (
+    <Glyph>
+      <path d="M6.5 4.2v11.6l9.3-5.8z" />
+    </Glyph>
+  ),
+  stop: () => (
+    <Glyph>
+      <rect x="5" y="5" width="10" height="10" rx="2" />
+    </Glyph>
+  ),
+  send: () => (
+    <Glyph>
+      <path d="M17 3.5 9 11M17 3.5l-5.2 13.8-2.9-6.2-6.2-2.9z" />
+    </Glyph>
+  ),
+  clear: () => (
+    <Glyph>
+      <path d="M3.5 5.5h13M8 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M5.5 5.5l.7 10a1.5 1.5 0 0 0 1.5 1.4h4.6a1.5 1.5 0 0 0 1.5-1.4l.7-10" />
+    </Glyph>
+  ),
+  settings: () => (
+    <Glyph>
+      <circle cx="10" cy="10" r="2.6" />
+      <path d="M10 2.4v1.9M10 15.7v1.9M17.6 10h-1.9M4.3 10H2.4M15.4 4.6l-1.3 1.3M5.9 14.1l-1.3 1.3M15.4 15.4l-1.3-1.3M5.9 5.9 4.6 4.6" />
+    </Glyph>
+  ),
+  panel: () => (
+    <Glyph>
+      <rect x="2.5" y="3.5" width="15" height="13" rx="2" />
+      <path d="M12 3.5v13" />
+    </Glyph>
+  ),
+};
+
 type ButtonTone = 'primary' | 'ghost' | 'danger';
 
 const BUTTON_TONES: Record<ButtonTone, string> = {
   primary: 'bg-accent text-void hover:bg-accent-dim disabled:hover:bg-accent',
-  ghost: 'border border-line text-ink-dim hover:border-line-strong hover:text-ink',
+  ghost: 'border border-line text-ink-dim hover:border-line-strong hover:text-ink hover:bg-hover/50',
   danger: 'border border-critical/40 text-critical hover:bg-critical/10',
 };
 
+/**
+ * Sized for a hand, not a cursor. `icon` is square so a glyph-only control
+ * keeps a proper hit target instead of collapsing to the size of its svg.
+ */
+const BUTTON_SIZES = {
+  md: 'min-h-[2.75rem] px-4 py-2.5 text-[14px]',
+  icon: 'h-11 w-11 p-0',
+} as const;
+
 export function Button({
   tone = 'ghost',
+  size = 'md',
   loading,
   children,
   className = '',
   ...props
-}: InputHTMLAttributes<HTMLButtonElement> & {
+  // `size` on InputHTMLAttributes is the numeric DOM attribute; intersecting
+  // with it collapses this prop to `never`.
+}: Omit<InputHTMLAttributes<HTMLButtonElement>, 'size'> & {
   tone?: ButtonTone;
+  size?: keyof typeof BUTTON_SIZES;
   loading?: boolean;
   children: ReactNode;
 }) {
@@ -211,10 +281,10 @@ export function Button({
       type="button"
       {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}
       disabled={props.disabled || loading}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-[13px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_TONES[tone]} ${className}`}
+      className={`press inline-flex shrink-0 items-center justify-center gap-2 rounded-xl font-medium disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_SIZES[size]} ${BUTTON_TONES[tone]} ${className}`}
     >
       {loading && (
-        <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
       )}
       {children}
     </button>

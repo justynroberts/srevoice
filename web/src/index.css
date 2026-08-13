@@ -160,6 +160,78 @@
     mask-image: linear-gradient(to bottom, transparent, black 3rem);
     -webkit-mask-image: linear-gradient(to bottom, transparent, black 3rem);
   }
+
+  /* Shared feel for anything clickable: lifts a little, presses in properly.
+     Transform rather than colour so it reads the same in both themes. */
+  .press {
+    transition:
+      transform 140ms cubic-bezier(0.2, 0.8, 0.3, 1),
+      background-color 140ms ease,
+      border-color 140ms ease,
+      box-shadow 140ms ease;
+  }
+  .press:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+  .press:active:not(:disabled) {
+    transform: translateY(0) scale(0.97);
+    transition-duration: 60ms;
+  }
+
+  /* A live microphone. The ring expands and fades on a slow cycle so it reads
+     as "listening" from the corner of the eye without demanding attention. */
+  .mic-live::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: inherit;
+    border: 2px solid var(--color-accent);
+    animation: mic-ring 2.4s cubic-bezier(0.3, 0, 0.2, 1) infinite;
+    pointer-events: none;
+  }
+
+  @keyframes mic-ring {
+    0% {
+      opacity: 0.55;
+      transform: scale(1);
+    }
+    70%,
+    100% {
+      opacity: 0;
+      transform: scale(1.35);
+    }
+  }
+
+  /* Muted: a slow breath, so the control never looks simply dead. */
+  .mic-off {
+    animation: mic-breathe 3s ease-in-out infinite;
+  }
+
+  @keyframes mic-breathe {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.72;
+    }
+  }
+
+  /* New results arriving in the side panel. */
+  .rise-in {
+    animation: rise-in 260ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  }
+
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

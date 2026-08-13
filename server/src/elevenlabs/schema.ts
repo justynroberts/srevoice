@@ -6,6 +6,7 @@
 
 const ALLOWED_TYPES = new Set(['string', 'number', 'integer', 'boolean', 'array', 'object']);
 const MAX_DEPTH = 4;
+const MAX_DESCRIPTION = 500;
 
 interface JsonSchemaLike {
   type?: unknown;
@@ -20,6 +21,38 @@ interface JsonSchemaLike {
   default?: unknown;
 }
 
+/** Every concrete type a union offers, in declaration order, deduplicated. */
+function unionTypes(node: JsonSchemaLike): string[] {
+  const found: string[] = [];
+  for (const key of ['anyOf', 'oneOf'] as const) {
+    const branches = node[key];
+    if (!Array.isArray(branches)) continue;
+    for (const branch of branches) {
+      if (branch && typeof branch === 'object') {
+        const t = firstConcreteType(branch as JsonSchemaLike);
+        if (t && !found.includes(t)) found.push(t);
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * True when a union offers a string *as well as* a container. ElevenLabs takes
+ * one type per parameter, so picking the container silently removes the ability
+ * to send a string — and for a parameter like an HTTP request body, the string
+ * branch is the only one that can carry a non-JSON payload such as YAML.
+ *
+ * A string can always carry the serialised form of the other branches, so it is
+ * the branch that loses the least. Note this is deliberately not triggered by
+ * the `[array, null]` / `[string, null]` optional idiom, which has only one
+ * concrete type and must keep it.
+ */
+function prefersStringBranch(node: JsonSchemaLike): boolean {
+  const types = unionTypes(node);
+  return types.includes('string') && (types.includes('object') || types.includes('array'));
+}
+
 function firstConcreteType(node: JsonSchemaLike): string | undefined {
   if (typeof node.type === 'string' && ALLOWED_TYPES.has(node.type)) return node.type;
 
@@ -28,6 +61,8 @@ function firstConcreteType(node: JsonSchemaLike): string | undefined {
     const found = node.type.find((t) => typeof t === 'string' && t !== 'null' && ALLOWED_TYPES.has(t));
     if (typeof found === 'string') return found;
   }
+
+  if (prefersStringBranch(node)) return 'string';
 
   // Unions: adopt the first branch that resolves to something concrete.
   for (const key of ['anyOf', 'oneOf', 'allOf'] as const) {
@@ -94,6 +129,13 @@ function normaliseNode(input: unknown, depth: number, name = ''): Record<string,
   // top-level parameters and leave nested ones bare, which would cost the
   // whole tool — so synthesise one from the property name.
   out.description = describe(node.description, name);
+  // The agent sees only the flattened type, so say what the string has to hold.
+  // Trimmed to keep the whole description inside the same budget `describe`
+  // applies, rather than pushing past it by the length of the note.
+  if (type === 'string' && prefersStringBranch(node)) {
+    const note = ' (Send as a string — serialise JSON yourself, or pass raw text such as YAML verbatim.)';
+    out.description = `${(out.description as string).slice(0, MAX_DESCRIPTION - note.length)}${note}`;
+  }
   if (Array.isArray(node.enum) && node.enum.length > 0) {
     out.enum = node.enum.filter((v) => ['string', 'number', 'boolean'].includes(typeof v)).slice(0, 50);
     if ((out.enum as unknown[]).length === 0) delete out.enum;
@@ -136,7 +178,7 @@ function normaliseNode(input: unknown, depth: number, name = ''): Record<string,
 }
 
 function describe(existing: unknown, name: string): string {
-  if (typeof existing === 'string' && existing.trim()) return existing.trim().slice(0, 500);
+  if (typeof existing === 'string' && existing.trim()) return existing.trim().slice(0, MAX_DESCRIPTION);
   const humanised = humanise(name);
   return humanised || 'No description provided.';
 }
