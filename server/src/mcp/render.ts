@@ -8,7 +8,9 @@
  *    costs nothing.
  */
 
-const SPEECH_BUDGET = 6000;
+// Generous: this is what the agent reads to reason over, not what it says out
+// loud. Cutting it early is what forces a needless second query.
+const SPEECH_BUDGET = 24_000;
 
 export interface RenderedResult {
   speech: string;

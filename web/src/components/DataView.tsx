@@ -120,13 +120,14 @@ export function DataView({ value }: { value: unknown }) {
             {shape.total} incident{shape.total === 1 ? '' : 's'}
           </p>
           <ul className="space-y-1.5">
-            {shape.incidents.slice(0, 50).map((incident) => (
+            {shape.incidents.slice(0, 250).map((incident) => (
               <IncidentRow key={incident.id} incident={incident} />
             ))}
           </ul>
-          {shape.total > 50 && (
+          {shape.total > 250 && (
             <p className="mt-2 text-[11px] text-ink-faint">
-              Showing the first 50 of {shape.total}. Ask the agent to narrow the query.
+              Showing the first 250 of {shape.total}. Ask {'\u2018'}narrow that down{'\u2019'} to see a
+              filtered view.
             </p>
           )}
         </div>
@@ -149,7 +150,7 @@ export function DataView({ value }: { value: unknown }) {
               </tr>
             </thead>
             <tbody>
-              {shape.rows.slice(0, 60).map((row, i) => (
+              {shape.rows.slice(0, 250).map((row, i) => (
                 <tr key={i} className="border-t border-line/60 transition-colors hover:bg-raised/50">
                   {shape.columns.map((col) => (
                     <td key={col} className="max-w-[18rem] truncate px-2.5 py-1.5 text-ink-dim">

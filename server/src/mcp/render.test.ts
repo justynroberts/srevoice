@@ -26,13 +26,21 @@ describe('renderToolResult', () => {
     expect(result.truncated).toBe(false);
   });
 
-  it('truncates a huge payload for speech but leaves the display intact', () => {
-    const big = 'x'.repeat(20_000);
-    const result = renderToolResult({ content: [{ type: 'text', text: big }] });
+  it('passes a large payload through — cutting early forces a second query', () => {
+    const large = 'x'.repeat(20_000);
+    const result = renderToolResult({ content: [{ type: 'text', text: large }] });
+    expect(result.truncated).toBe(false);
+    expect(result.speech).toHaveLength(20_000);
+  });
+
+  it('truncates only a genuinely huge payload, leaving the display intact', () => {
+    const huge = 'x'.repeat(60_000);
+    const result = renderToolResult({ content: [{ type: 'text', text: huge }] });
     expect(result.truncated).toBe(true);
-    expect(result.speech.length).toBeLessThan(7000);
+    expect(result.speech.length).toBeLessThan(25_000);
     expect(result.speech).toContain('full payload is on screen');
-    expect(String(result.display)).toHaveLength(20_000);
+    // The screen always keeps everything.
+    expect(String(result.display)).toHaveLength(60_000);
   });
 
   it('flags errors without throwing', () => {

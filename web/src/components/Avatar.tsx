@@ -81,10 +81,10 @@ export function Avatar({
 
   return (
     <div className="flex items-center gap-3.5">
-      <div className="relative h-14 w-14 shrink-0">
+      <div className="relative h-[5.5rem] w-[5.5rem] shrink-0">
         {/* A ring echoes the state for anyone whose artwork is a still image. */}
         <motion.span
-          className={`absolute -inset-1 rounded-full border-2 ${
+          className={`absolute -inset-1.5 rounded-full border-2 ${
             muted && live
               ? 'border-warn/50'
               : activity === 'offline'
@@ -115,14 +115,14 @@ export function Avatar({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
-            className="h-14 w-14 rounded-full object-cover"
+            className="h-[5.5rem] w-[5.5rem] rounded-full object-cover"
           />
         </AnimatePresence>
       </div>
 
       <div className="leading-tight">
-        <p className="text-[14px] font-semibold text-ink">{name}</p>
-        <p className="text-[11px] text-ink-dim">{caption}</p>
+        <p className="text-[15px] font-semibold text-ink">{name}</p>
+        <p className="text-[12px] text-ink-dim">{caption}</p>
       </div>
     </div>
   );

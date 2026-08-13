@@ -45,3 +45,10 @@ describe('screen guidance', () => {
     expect(DEFAULT_SYSTEM_PROMPT).toMatch(/as well as answering out loud/i);
   });
 });
+
+describe('ending guidance', () => {
+  it('tells the agent that "that\'s all" means end the session', () => {
+    expect(DEFAULT_SYSTEM_PROMPT).toContain('session__end');
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/short goodbye/i);
+  });
+});

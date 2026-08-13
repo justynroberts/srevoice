@@ -54,7 +54,9 @@ interface SreState {
   phase: SessionPhase;
   problem: SessionProblem | null;
   awaitingReply: boolean;
+  endRequested: boolean;
   setPhase: (p: SessionPhase) => void;
+  setEndRequested: (v: boolean) => void;
   setProblem: (p: SessionProblem | null) => void;
   setAwaitingReply: (v: boolean) => void;
   addTurn: (role: Turn['role'], text: string) => void;
@@ -84,6 +86,7 @@ export function SreConversationProvider({
   const [phase, setPhase] = useState<SessionPhase>('idle');
   const [problem, setProblem] = useState<SessionProblem | null>(null);
   const [awaitingReply, setAwaitingReply] = useState(false);
+  const [endRequested, setEndRequested] = useState(false);
 
   const addTurn = useCallback((role: Turn['role'], text: string) => {
     const clean = text?.trim();
@@ -101,6 +104,13 @@ export function SreConversationProvider({
   }, []);
 
   const runTool = useCallback(async (tool: string, params: Record<string, unknown>): Promise<string> => {
+    // Handled here rather than server-side: only the browser owns the socket
+    // and the microphone.
+    if (tool === 'session__end') {
+      setEndRequested(true);
+      return 'Ending the session now. Say a brief goodbye — this is your last turn.';
+    }
+
     const callId = nextId('call');
     setToolCalls((prev) => [
       ...prev,
@@ -175,8 +185,10 @@ export function SreConversationProvider({
       phase,
       problem,
       awaitingReply,
+      endRequested,
       setPhase,
       setProblem,
+      setEndRequested,
       setAwaitingReply,
       addTurn,
       settlePending,
@@ -186,7 +198,7 @@ export function SreConversationProvider({
         setAwaitingReply(false);
       },
     }),
-    [turns, toolCalls, phase, problem, awaitingReply, addTurn, settlePending],
+    [turns, toolCalls, phase, problem, awaitingReply, endRequested, addTurn, settlePending],
   );
 
   return (
@@ -227,6 +239,12 @@ export function useSreConversation() {
   const conversation = useConversation();
   const { setPhase, setProblem, setAwaitingReply, addTurn, settlePending, phase } = state;
   const startingRef = useRef(false);
+  /**
+   * The microphone stream, kept so it can be released. Without this the tracks
+   * stay live after the session ends and the browser keeps showing the
+   * recording indicator — which quite reasonably reads as "it didn't end".
+   */
+  const micRef = useRef<MediaStream | null>(null);
 
   /**
    * Results that outran their turn.
@@ -294,7 +312,7 @@ export function useSreConversation() {
     setPhase('requesting-mic');
 
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      micRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       setPhase('idle');
       setProblem({
@@ -337,11 +355,44 @@ export function useSreConversation() {
     }
   }, [conversation, setPhase, setProblem]);
 
-  const stop = useCallback(() => {
+  const releaseMic = useCallback(() => {
+    micRef.current?.getTracks().forEach((track) => track.stop());
+    micRef.current = null;
+  }, []);
+
+  const stop = useCallback(async () => {
     setPhase('ending');
-    conversation.endSession();
-    setPhase('idle');
-  }, [conversation, setPhase]);
+    try {
+      // Awaited: the socket teardown is asynchronous, and returning to idle
+      // before it completes leaves the session half-open.
+      await conversation.endSession();
+    } catch {
+      // Already closed, or the socket died first — either way we are done.
+    } finally {
+      releaseMic();
+      setAwaitingReply(false);
+      setPhase('idle');
+    }
+  }, [conversation, setPhase, setAwaitingReply, releaseMic]);
+
+  // A dropped connection releases the microphone too.
+  useEffect(() => {
+    if (phase === 'idle') releaseMic();
+  }, [phase, releaseMic]);
+
+  // Never leave the microphone open behind a closing tab or a remount.
+  useEffect(() => releaseMic, [releaseMic]);
+
+  /**
+   * "That's all, thanks" should do exactly what the End session button does.
+   * The tool handler lives in the provider, which cannot reach `endSession`, so
+   * it raises a flag and this effect performs the teardown.
+   */
+  useEffect(() => {
+    if (!state.endRequested) return;
+    state.setEndRequested(false);
+    void stop();
+  }, [state, stop]);
 
   // She has answered — stop showing the thinking state. In an effect rather
   // than during render: the flag lives in the provider above this hook.

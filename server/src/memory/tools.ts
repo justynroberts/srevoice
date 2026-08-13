@@ -78,6 +78,23 @@ export const MEMORY_TOOLS = [
       required: ['title', 'items'],
     },
   },
+  {
+    name: 'session__end',
+    description:
+      'End the voice session — exactly what the End session button does. Call this when the engineer says they ' +
+      'are done: "that\'s all", "thanks, bye", "end the session", "we\'re finished". Say a short goodbye in the ' +
+      'same turn; the connection closes straight after.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        reason: {
+          type: 'string',
+          description: 'Optional short note on why the session is ending.',
+        },
+      },
+      required: [],
+    },
+  },
 ] as const;
 
 const NAMES = new Set(MEMORY_TOOLS.map((t) => t.name));
@@ -138,6 +155,12 @@ export async function runMemoryTool(
       isError: false,
       truncated: false,
     };
+  }
+
+  if (tool === 'session__end') {
+    // The browser intercepts this before it reaches the server; this branch
+    // only runs if something calls the endpoint directly.
+    return { speech: 'Ending the session.', display: null, isError: false, truncated: false };
   }
 
   if (tool === 'screen__show') {

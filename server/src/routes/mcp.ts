@@ -10,7 +10,10 @@ import { MEMORY_TOOLS, runMemoryTool, isMemoryTool } from '../memory/tools.js';
  * Comfortably inside ElevenLabs' 120s client-tool ceiling, and short enough
  * that she does not sit mute while a slow query runs.
  */
-const SOFT_BUDGET_MS = 20_000;
+// Most of ElevenLabs' 120s client-tool ceiling, so a merely slow query is
+// answered in the same turn rather than deferred. Only genuinely long work
+// falls through to the pending path.
+const SOFT_BUDGET_MS = 100_000;
 
 const callBody = z.object({
   tool: z.string().min(1).max(128),
