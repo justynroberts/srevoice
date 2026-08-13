@@ -127,7 +127,13 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
   // to type now", so put the caret where it is needed.
   const toggleMic = () => {
     const next = !isMuted;
-    setMuted(next);
+    try {
+      setMuted(next);
+    } catch {
+      // The SDK throws if the socket has already gone — clicking mute as a
+      // session tears down is not worth an error.
+      return;
+    }
     if (next) requestAnimationFrame(() => inputRef.current?.focus());
   };
 
