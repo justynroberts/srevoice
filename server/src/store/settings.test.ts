@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { maskSecret } from '../logger.js';
-import { redactSettings } from './schema.js';
+import { isAllowedMcpUrl, redactSettings } from './schema.js';
 import { SettingsStore } from './settings.js';
 
 const MASTER_KEY = 'IGoAP0K5aH2Yy1qz8VbC3nJd7Lm4Rt6Xw9Ee0Uu5Iio=';
@@ -129,5 +129,31 @@ describe('redactSettings', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('isAllowedMcpUrl', () => {
+  it('accepts https anywhere', () => {
+    expect(isAllowedMcpUrl('https://mcp.pagerduty.com/mcp')).toBe(true);
+  });
+
+  it('accepts http only to hosts that cannot be routed from outside', () => {
+    // A container-network sidecar has no public name and so cannot hold a
+    // certificate; a single-label hostname is what marks it as internal.
+    expect(isAllowedMcpUrl('http://mcp-bridge:8080/mcp')).toBe(true);
+    expect(isAllowedMcpUrl('http://localhost:8080/mcp')).toBe(true);
+    expect(isAllowedMcpUrl('http://127.0.0.1:8080/mcp')).toBe(true);
+  });
+
+  it('rejects plaintext to anything routable', () => {
+    expect(isAllowedMcpUrl('http://mcp.pagerduty.com/mcp')).toBe(false);
+    expect(isAllowedMcpUrl('http://192.168.1.10/mcp')).toBe(false);
+    expect(isAllowedMcpUrl('http://evil.example.com/mcp')).toBe(false);
+  });
+
+  it('rejects anything that is not http(s)', () => {
+    expect(isAllowedMcpUrl('ws://mcp-bridge/mcp')).toBe(false);
+    expect(isAllowedMcpUrl('file:///etc/passwd')).toBe(false);
+    expect(isAllowedMcpUrl('not a url')).toBe(false);
   });
 });

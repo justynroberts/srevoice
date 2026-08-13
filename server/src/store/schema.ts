@@ -4,12 +4,39 @@ import { z } from 'zod';
  * A remote MCP endpoint the SRE agent can reach. `headers` carries whatever the
  * provider needs — PagerDuty's hosted MCP uses `Authorization: Bearer <token>`.
  */
+/**
+ * https everywhere it crosses a network, with one carve-out: a sidecar reached
+ * over the container network never leaves the host, has no public name to get a
+ * certificate for, and cannot be given one. Docker service names are
+ * single-label — `mcp-bridge`, not `mcp-bridge.example.com` — which is what
+ * distinguishes them from anything routable on the internet.
+ */
+export function isAllowedMcpUrl(raw: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (url.protocol === 'https:') return true;
+  if (url.protocol !== 'http:') return false;
+
+  const host = url.hostname.toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+  // A single-label name resolves only inside the container network.
+  return !host.includes('.') && /^[a-z0-9][a-z0-9_-]*$/.test(host);
+}
+
 export const mcpServerSchema = z.object({
   id: z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/, 'id must be lowercase alphanumeric, - or _'),
   label: z.string().min(1).max(80),
-  url: z.string().url().refine((u) => u.startsWith('https://') || u.startsWith('http://localhost') || u.startsWith('http://127.0.0.1'), {
-    message: 'MCP URL must be https (http allowed only for localhost)',
-  }),
+  url: z
+    .string()
+    .url()
+    .refine(isAllowedMcpUrl, {
+      message:
+        'MCP URL must be https, or http to a host on the internal network (a single-label hostname, localhost, or 127.0.0.1)',
+    }),
   headers: z.record(z.string()).default({}),
   enabled: z.boolean().default(true),
 });
