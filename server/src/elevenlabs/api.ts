@@ -75,6 +75,32 @@ export interface ClientToolConfig {
   parameters: Record<string, unknown>;
 }
 
+export interface ConversationSummary {
+  conversation_id: string;
+  status?: string;
+  call_duration_secs?: number;
+  message_count?: number;
+  call_successful?: string;
+  start_time_unix_secs?: number;
+}
+
+export interface ConversationDetail {
+  conversation_id: string;
+  status?: string;
+  metadata?: {
+    termination_reason?: string;
+    call_duration_secs?: number;
+    [k: string]: unknown;
+  };
+  transcript?: Array<{
+    role?: string;
+    message?: string | null;
+    time_in_call_secs?: number;
+    tool_calls?: Array<{ tool_name?: string; params_as_json?: string }>;
+    tool_results?: Array<{ tool_name?: string; result_value?: string; is_error?: boolean }>;
+  }>;
+}
+
 export class ElevenLabsClient {
   constructor(private readonly apiKey: string) {
     if (!apiKey) throw new Error('ElevenLabs API key is required');
@@ -246,6 +272,27 @@ export class ElevenLabsClient {
       if (err instanceof ElevenLabsError && err.status === 404) return false;
       throw err;
     }
+  }
+
+  /**
+   * Recent conversations for an agent, with the reason each one ended.
+   *
+   * Server logs cannot tell a deliberate `session__end` apart from a socket
+   * error, because neither reaches this server — one is handled entirely in
+   * the browser and the other never gets that far. ElevenLabs holds the only
+   * authoritative record of why a call stopped.
+   */
+  async listConversations(agentId: string, limit = 8): Promise<ConversationSummary[]> {
+    const body = await this.request<{ conversations?: ConversationSummary[] }>(
+      `/v1/convai/conversations?agent_id=${encodeURIComponent(agentId)}&page_size=${limit}`,
+    );
+    return body.conversations ?? [];
+  }
+
+  async getConversation(conversationId: string): Promise<ConversationDetail> {
+    return this.request<ConversationDetail>(
+      `/v1/convai/conversations/${encodeURIComponent(conversationId)}`,
+    );
   }
 
   async getSignedUrl(agentId: string): Promise<string> {

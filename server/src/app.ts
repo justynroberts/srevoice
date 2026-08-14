@@ -16,6 +16,7 @@ import { logger } from './logger.js';
 import { healthRoutes } from './routes/health.js';
 import { mcpRoutes } from './routes/mcp.js';
 import { skillRoutes } from './routes/skills.js';
+import { diagnosticsRoutes } from './routes/diagnostics.js';
 import { memoryRoutes } from './routes/memory.js';
 import { sessionRoutes } from './routes/session.js';
 import { settingsRoutes } from './routes/settings.js';
@@ -84,6 +85,7 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   await app.register(mcpRoutes(ctx));
   await app.register(memoryRoutes(ctx));
   await app.register(skillRoutes(ctx));
+  await app.register(diagnosticsRoutes(ctx));
   await app.register(sessionRoutes(ctx));
 
   app.setErrorHandler((err: FastifyError, req, reply) => {
