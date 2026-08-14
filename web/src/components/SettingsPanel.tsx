@@ -10,6 +10,7 @@ import {
   type ServerStatus,
   type SettingsOptions,
   type MemoryNote,
+  type PromptStatus,
   type SettingsView,
   type VoiceOption,
 } from '../lib/api';
@@ -100,6 +101,7 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
   // The skill index lives in the system prompt, so edits are inert until the
   // agent is provisioned again. Say so rather than letting it look applied.
   const [skillsChanged, setSkillsChanged] = useState(false);
+  const [promptStatus, setPromptStatus] = useState<PromptStatus | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [reconnectingId, setReconnectingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -110,7 +112,12 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get<{ settings: SettingsView; defaultSystemPrompt: string }>('/api/settings');
+      const res = await api.get<{
+        settings: SettingsView;
+        defaultSystemPrompt: string;
+        promptStatus?: PromptStatus;
+      }>('/api/settings');
+      setPromptStatus(res.promptStatus ?? null);
       setSettings(res.settings);
       setDefaultPrompt(res.defaultSystemPrompt);
       setDrafts(res.settings.mcpServers.map(toDraft));
@@ -512,18 +519,48 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
                     hint="Added to the end of the system prompt and given priority over it. Use this for pronunciation, house conventions, and anything you would otherwise repeat every session — it survives updates to the prompt below."
                   />
 
+                  {promptStatus?.overridden && (
+                    <Callout tone={promptStatus.missingSections.length ? 'warn' : 'info'}>
+                      {promptStatus.missingSections.length ? (
+                        <>
+                          This saved prompt replaces the built-in one and no longer tracks it. The
+                          built-in prompt has gained{' '}
+                          {promptStatus.missingSections.length === 1 ? 'a section' : 'sections'} your
+                          copy does not have:{' '}
+                          <strong className="font-semibold">
+                            {promptStatus.missingSections.join(', ')}
+                          </strong>
+                          .{' '}
+                          {promptStatus.ownSections.length === 0
+                            ? 'Nothing here is unique to your copy, so switching back loses nothing.'
+                            : 'Your own sections would be lost if you switch back.'}
+                        </>
+                      ) : (
+                        <>This saved prompt replaces the built-in one and will not pick up future changes to it.</>
+                      )}
+                    </Callout>
+                  )}
+
                   <TextArea
                     label="System prompt"
                     rows={14}
                     value={settings.agent.systemPrompt ?? defaultPrompt}
                     onChange={(e) => patchSettings({ agent: { ...settings.agent, systemPrompt: e.target.value } })}
-                    hint="The live tool catalogue is appended automatically on every provision."
+                    hint={
+                      promptStatus?.overridden
+                        ? 'Saved as your own copy. The live tool catalogue is still appended on every provision.'
+                        : 'Showing the built-in prompt, which updates with the app. Editing it saves your own copy, which will not.'
+                    }
                   />
+                  {/* Clears the stored copy rather than storing the default as a
+                      custom prompt — doing the latter is what silently pinned
+                      this install to an old prompt for two days. */}
                   <Button
                     tone="ghost"
-                    onClick={() => patchSettings({ agent: { ...settings.agent, systemPrompt: defaultPrompt } })}
+                    disabled={!promptStatus?.overridden}
+                    onClick={() => patchSettings({ agent: { ...settings.agent, systemPrompt: '' } })}
                   >
-                    Reset to default prompt
+                    Use the built-in prompt
                   </Button>
                 </Tabs.Content>
 

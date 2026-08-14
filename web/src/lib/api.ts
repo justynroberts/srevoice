@@ -219,6 +219,14 @@ export interface MemoryNote {
   pinned: boolean;
 }
 
+export interface PromptStatus {
+  overridden: boolean;
+  /** Sections the built-in prompt has that the saved copy does not. */
+  missingSections: string[];
+  /** Sections unique to the saved copy. Empty means it is just an old default. */
+  ownSections: string[];
+}
+
 export interface Skill {
   id: string;
   name: string;

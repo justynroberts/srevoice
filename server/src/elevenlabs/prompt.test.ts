@@ -114,3 +114,31 @@ describe('ending guidance', () => {
     expect(DEFAULT_SYSTEM_PROMPT).toMatch(/short goodbye/i);
   });
 });
+
+describe('a saved prompt stops tracking the built-in one', () => {
+  // Two days of prompt fixes went nowhere because a saved copy of an older
+  // default was overriding DEFAULT_SYSTEM_PROMPT, and nothing said so.
+  it('detects a saved copy that is missing newer sections', async () => {
+    const { promptStatus } = await import('../routes/settings.js');
+    const old = '## How to say things\nBe brief.\n\n## How to work\nCall tools.';
+    const status = promptStatus(old);
+
+    expect(status.overridden).toBe(true);
+    expect(status.missingSections).toContain('Your tools are already connected and authenticated');
+    expect(status.missingSections).toContain('Never talk yourself out of a tool');
+    // Nothing bespoke, so switching back to the built-in prompt loses nothing.
+    expect(status.ownSections).toEqual([]);
+  });
+
+  it('reports nothing when no copy is saved', async () => {
+    const { promptStatus } = await import('../routes/settings.js');
+    expect(promptStatus(undefined).overridden).toBe(false);
+    expect(promptStatus('   ').overridden).toBe(false);
+  });
+
+  it('preserves sections the operator actually wrote', async () => {
+    const { promptStatus } = await import('../routes/settings.js');
+    const status = promptStatus('## Our escalation ladder\nPage Dana first.');
+    expect(status.ownSections).toEqual(['Our escalation ladder']);
+  });
+});

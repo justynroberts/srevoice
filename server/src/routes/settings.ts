@@ -43,6 +43,35 @@ class UnresolvedSecretError extends Error {
   }
 }
 
+/**
+ * A saved system prompt replaces the built-in one outright and never updates
+ * again. That is the right behaviour for someone who genuinely wrote their own,
+ * and a trap for someone who opened the box, saved, and moved on — they are
+ * pinned to that day's default and silently miss every improvement after it.
+ *
+ * Comparing section headings is crude but honest: it names what the stored
+ * copy is missing rather than just claiming it is stale.
+ */
+function headings(text: string): string[] {
+  return (text.match(/^##+ .*/gm) ?? []).map((h) => h.replace(/^#+\s*/, '').trim());
+}
+
+export function promptStatus(stored?: string) {
+  const custom = stored?.trim();
+  if (!custom) return { overridden: false, missingSections: [] as string[], ownSections: [] as string[] };
+
+  const mine = new Set(headings(custom));
+  const theirs = headings(DEFAULT_SYSTEM_PROMPT);
+  return {
+    overridden: true,
+    // Present in the current built-in prompt, absent from the saved copy.
+    missingSections: theirs.filter((h) => !mine.has(h)),
+    // Anything genuinely their own — if this is empty, the saved copy is just
+    // an old default and resetting costs nothing.
+    ownSections: [...mine].filter((h) => !theirs.includes(h)),
+  };
+}
+
 const updateBody = z.object({
   elevenlabsApiKey: z.string().min(1).nullable().optional(),
   voice: voiceSettingsSchema.partial().optional(),
@@ -57,6 +86,7 @@ export const settingsRoutes = (ctx: AppContext): FastifyPluginAsync =>
       return {
         settings: redactSettings(settings, maskSecret),
         defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
+        promptStatus: promptStatus(settings.agent.systemPrompt),
       };
     });
 
