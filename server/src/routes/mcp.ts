@@ -87,7 +87,7 @@ export const mcpRoutes = (ctx: AppContext): FastifyPluginAsync =>
       const startedAt = Date.now();
 
       const work: Promise<RenderedResult> = isMemoryTool(tool)
-        ? runMemoryTool(ctx.memory, tool, args)
+        ? runMemoryTool(ctx, tool, args)
         : ctx.pool.call(tool, args).then(renderToolResult);
 
       // Register before racing, so a call that outruns the budget is already

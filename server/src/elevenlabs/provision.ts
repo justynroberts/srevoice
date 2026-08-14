@@ -4,6 +4,7 @@ import type { SettingsStore } from '../store/settings.js';
 import type { Settings } from '../store/schema.js';
 import { ElevenLabsClient, ElevenLabsError } from './api.js';
 import { buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from './prompt.js';
+import type { Skill, SkillStore } from '../store/skills.js';
 import { normaliseToolParameters } from './schema.js';
 import { MEMORY_TOOLS } from '../memory/tools.js';
 
@@ -29,6 +30,7 @@ export interface ProvisionReport {
 export async function provision(
   store: SettingsStore,
   pool: McpPool,
+  skills: SkillStore,
   opts: { pruneRemoved?: boolean } = {},
 ): Promise<ProvisionReport> {
   const settings = await store.load();
@@ -116,7 +118,7 @@ export async function provision(
     for (const [name, id] of orphans) nextToolIds[name] = id;
   }
 
-  const agentBody = buildAgentBody(settings, catalogue, Object.values(nextToolIds));
+  const agentBody = buildAgentBody(settings, catalogue, Object.values(nextToolIds), await skills.active());
   const agentId = await upsertAgent(client, settings, agentBody);
 
   await store.update((current) => ({
@@ -154,6 +156,7 @@ function buildAgentBody(
   settings: Settings,
   catalogue: CatalogueEntry[],
   toolIds: string[],
+  skills: Skill[],
 ): Record<string, unknown> {
   const base = settings.agent.systemPrompt?.trim() || DEFAULT_SYSTEM_PROMPT;
 
@@ -164,7 +167,7 @@ function buildAgentBody(
         first_message: settings.agent.firstMessage,
         language: settings.agent.language,
         prompt: {
-          prompt: buildSystemPrompt(base, catalogue, settings.agent.customInstructions),
+          prompt: buildSystemPrompt(base, catalogue, settings.agent.customInstructions, skills),
           llm: settings.agent.llm,
           temperature: settings.agent.temperature,
           max_tokens: -1,

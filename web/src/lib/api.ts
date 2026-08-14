@@ -90,6 +90,8 @@ export const api = {
     request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }),
   put: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
+  patch: <T>(path: string, body: unknown) =>
+    request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
 
@@ -215,6 +217,16 @@ export interface MemoryNote {
   createdAt: string;
   usedAt?: string;
   pinned: boolean;
+}
+
+export interface Skill {
+  id: string;
+  name: string;
+  whenToUse: string;
+  body: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SessionStart {

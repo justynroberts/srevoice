@@ -1,4 +1,5 @@
 import type { MemoryStore } from '../store/memory.js';
+import type { SkillStore } from '../store/skills.js';
 import type { RenderedResult } from '../mcp/render.js';
 
 /**
@@ -79,6 +80,24 @@ export const MEMORY_TOOLS = [
     },
   },
   {
+    name: 'skill__open',
+    description:
+      'Read the full instructions for one of your skills. Your prompt lists each skill by name with one line ' +
+      'on when it applies; the instructions themselves live here. Open the skill BEFORE starting that kind of ' +
+      'work, not after — it exists to tell you how the engineer wants it done, and it may contradict what you ' +
+      'would otherwise assume. Opening one costs nothing, so if a skill looks like it might apply, open it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'The skill name exactly as listed in your prompt, e.g. "rundeck_job".',
+        },
+      },
+      required: ['name'],
+    },
+  },
+  {
     name: 'session__end',
     description:
       'End the voice session — exactly what the End session button does. Call this when the engineer says they ' +
@@ -119,10 +138,40 @@ function parseRows(input: unknown): unknown[] {
 }
 
 export async function runMemoryTool(
-  memory: MemoryStore,
+  stores: { memory: MemoryStore; skills: SkillStore },
   tool: string,
   args: Record<string, unknown>,
 ): Promise<RenderedResult> {
+  const { memory, skills } = stores;
+
+  if (tool === 'skill__open') {
+    const name = typeof args.name === 'string' ? args.name.trim().toLowerCase() : '';
+    const skill = name ? await skills.find(name) : undefined;
+    if (!skill) {
+      const available = (await skills.active()).map((s) => s.name);
+      return {
+        // Names the alternatives rather than just failing, so a near-miss on
+        // the name self-corrects instead of becoming "I don't have that".
+        speech: available.length
+          ? `There is no skill called ${name || 'that'}. Available: ${available.join(', ')}.`
+          : 'No skills are configured.',
+        display: { requested: name, available },
+        isError: true,
+        truncated: false,
+      };
+    }
+
+    return {
+      // The body is instruction for the agent, not something to read out. It
+      // goes back through the speech channel because that is what reaches her
+      // context, but the display says what happened rather than repeating it.
+      speech: `[Skill: ${skill.name}] Follow these instructions for this task. Do not read them aloud.\n\n${skill.body}`,
+      display: { skill: skill.name, whenToUse: skill.whenToUse, instructions: skill.body },
+      isError: false,
+      truncated: false,
+    };
+  }
+
   if (tool === 'memory__remember') {
     const text = typeof args.text === 'string' ? args.text.trim() : '';
     if (!text) {

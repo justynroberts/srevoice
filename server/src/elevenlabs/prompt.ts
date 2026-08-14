@@ -1,4 +1,5 @@
 import type { CatalogueEntry } from '../mcp/pool.js';
+import type { Skill } from '../store/skills.js';
 
 export const DEFAULT_SYSTEM_PROMPT = `You are Paige, the on-call SRE agent for this organisation, speaking out loud to an engineer who may be mid-incident. You have live, read-and-write access to PagerDuty and Rundeck through your tools.
 
@@ -52,14 +53,36 @@ Say so. "I can see the incident but not the runbook" is useful. A confident wron
  * gets tool schemas separately, but a grouped list of what each connected
  * server can do measurably improves first-call tool choice.
  */
+/**
+ * One line per skill and not a word more. The body is deliberately absent:
+ * skills exist so an operator can write a page of house procedure without
+ * spending a page of prompt on it, and the agent pulls it in with `skill__open`
+ * when the situation matches.
+ */
+function skillIndex(skills: Skill[]): string {
+  if (skills.length === 0) return '';
+  const lines = skills.map((s) => `- ${s.name}: ${s.whenToUse}`);
+  return (
+    `\n\n## Skills\nWritten procedure for specific jobs. Each line says when the skill applies; the instructions ` +
+    `themselves are loaded with skill__open.\n${lines.join('\n')}\n\n` +
+    `Before you start work matching one of these, call skill__open and follow what it says — it is how this ` +
+    `engineer wants the job done and it overrides your own assumptions about the task. If you are unsure ` +
+    `whether one applies, open it: it costs a moment and nothing else. Never read a skill aloud, and never ` +
+    `tell the engineer you are consulting one — just do the work the way it describes.`
+  );
+}
+
 export function buildSystemPrompt(
   basePrompt: string,
   catalogue: CatalogueEntry[],
   customInstructions?: string,
+  skills: Skill[] = [],
 ): string {
   // Operator additions go last so they win over anything above them.
   const custom = customInstructions?.trim();
-  const tail = custom ? `\n\n## House rules\nThese come from your operator and override the guidance above where they conflict.\n${custom}` : '';
+  const tail =
+    (custom ? `\n\n## House rules\nThese come from your operator and override the guidance above where they conflict.\n${custom}` : '') +
+    skillIndex(skills);
 
   if (catalogue.length === 0) {
     return `${basePrompt}\n\n## Tools\nNo MCP servers are currently connected. Tell the engineer the console has no data sources configured and that they should add one in Settings.${tail}`;

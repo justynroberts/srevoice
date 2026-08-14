@@ -192,10 +192,18 @@ export function Toggle({
  * inherit `currentColor` to work in both themes, and a dependency for this
  * would ship a few thousand glyphs to render twelve.
  */
-function Glyph({ children, className = '' }: { children: ReactNode; className?: string }) {
+function Glyph({
+  children,
+  className = '',
+  viewBox = '0 0 20 20',
+}: {
+  children: ReactNode;
+  className?: string;
+  viewBox?: string;
+}) {
   return (
     <svg
-      viewBox="0 0 20 20"
+      viewBox={viewBox}
       className={`h-[1.15rem] w-[1.15rem] shrink-0 ${className}`}
       fill="none"
       stroke="currentColor"
@@ -230,10 +238,16 @@ export const Icon = {
       <path d="M3.5 5.5h13M8 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M5.5 5.5l.7 10a1.5 1.5 0 0 0 1.5 1.4h4.6a1.5 1.5 0 0 0 1.5-1.4l.7-10" />
     </Glyph>
   ),
+  /**
+   * An actual toothed cog. The usual shorthand — a circle with radiating
+   * ticks — reads as a sun or an asterisk at this size, not as a sprocket.
+   * The teeth are drawn as one closed outline so the silhouette is unmistakable
+   * even at 18px.
+   */
   settings: () => (
-    <Glyph>
-      <circle cx="10" cy="10" r="2.6" />
-      <path d="M10 2.4v1.9M10 15.7v1.9M17.6 10h-1.9M4.3 10H2.4M15.4 4.6l-1.3 1.3M5.9 14.1l-1.3 1.3M15.4 15.4l-1.3-1.3M5.9 5.9 4.6 4.6" />
+    <Glyph viewBox="0 0 24 24">
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+      <circle cx="12" cy="12" r="3" />
     </Glyph>
   ),
   panel: () => (

@@ -15,7 +15,7 @@ export const sessionRoutes = (ctx: AppContext): FastifyPluginAsync =>
         // Reconnect first: provisioning against a stale catalogue would
         // register tools that no longer exist.
         await ctx.pool.sync(settings.mcpServers);
-        const report = await provision(ctx.store, ctx.pool);
+        const report = await provision(ctx.store, ctx.pool, ctx.skills);
         return { ...report, servers: ctx.pool.status() };
       } catch (err) {
         if (err instanceof ProvisionError) return reply.code(400).send({ error: err.message });

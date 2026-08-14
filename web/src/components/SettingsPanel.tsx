@@ -13,6 +13,7 @@ import {
   type SettingsView,
   type VoiceOption,
 } from '../lib/api';
+import { SkillsEditor } from './SkillsEditor';
 import {
   blankDraft,
   draftToPayload,
@@ -96,6 +97,9 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [provisioning, setProvisioning] = useState(false);
+  // The skill index lives in the system prompt, so edits are inert until the
+  // agent is provisioned again. Say so rather than letting it look applied.
+  const [skillsChanged, setSkillsChanged] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [reconnectingId, setReconnectingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -190,6 +194,7 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
     setReport(null);
     try {
       const res = await api.post<ProvisionReport>('/api/provision');
+      setSkillsChanged(false);
       setReport(res);
       setNotice(null);
       onChanged();
@@ -319,6 +324,9 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
                 </Tabs.Trigger>
                 <Tabs.Trigger value="agent" className={TAB_TRIGGER}>
                   Agent
+                </Tabs.Trigger>
+                <Tabs.Trigger value="skills" className={TAB_TRIGGER}>
+                  Skills
                 </Tabs.Trigger>
                 <Tabs.Trigger value="memory" className={TAB_TRIGGER}>
                   Memory
@@ -519,6 +527,13 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
                   </Button>
                 </Tabs.Content>
 
+                <Tabs.Content value="skills" className="focus:outline-none">
+                  <SkillsEditor
+                    agentName={settings.agent.name}
+                    onChanged={() => setSkillsChanged(true)}
+                  />
+                </Tabs.Content>
+
                 <Tabs.Content value="memory" className="space-y-4 focus:outline-none">
                   <Callout tone="info">
                     What {settings.agent.name} carries between sessions. She writes these herself when
@@ -612,6 +627,13 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
                         {w}
                       </p>
                     ))}
+                  </Callout>
+                )}
+
+                {skillsChanged && (
+                  <Callout tone="warn">
+                    Skills changed. Provision the agent to update the index in her prompt — until
+                    then she will not know the new skill exists.
                   </Callout>
                 )}
 
