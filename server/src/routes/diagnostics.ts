@@ -14,6 +14,30 @@ import { ElevenLabsClient } from '../elevenlabs/api.js';
  */
 export const diagnosticsRoutes = (ctx: AppContext): FastifyPluginAsync =>
   async (app) => {
+    app.get('/api/diagnostics/quota', async (_req, reply) => {
+      const settings = await ctx.store.load();
+      if (!settings.elevenlabsApiKey) return reply.code(400).send({ error: 'No ElevenLabs API key configured' });
+
+      const sub = await new ElevenLabsClient(settings.elevenlabsApiKey).subscription();
+      if (!sub) {
+        return { available: false, note: 'The API key has no user-read scope, so quota cannot be read.' };
+      }
+
+      const used = Number(sub.character_count ?? 0);
+      const limit = Number(sub.character_limit ?? 0);
+      return {
+        available: true,
+        tier: sub.tier,
+        used,
+        limit,
+        remaining: Math.max(0, limit - used),
+        percentUsed: limit ? Math.round((used / limit) * 1000) / 10 : null,
+        resetsAt: sub.next_character_count_reset_unix
+          ? new Date(Number(sub.next_character_count_reset_unix) * 1000).toISOString()
+          : null,
+      };
+    });
+
     app.get('/api/diagnostics/conversations', async (req, reply) => {
       const query = z
         .object({ limit: z.coerce.number().int().min(1).max(20).default(5), full: z.coerce.boolean().default(false) })

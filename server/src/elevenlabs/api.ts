@@ -282,6 +282,21 @@ export class ElevenLabsClient {
    * the browser and the other never gets that far. ElevenLabs holds the only
    * authoritative record of why a call stopped.
    */
+  /**
+   * Remaining credits. A conversation that dies mid-turn with "exceeds your
+   * quota limit" is indistinguishable from a bug until you can see this.
+   *
+   * Best-effort: an Agents-scoped key may have no user-read permission, which
+   * is not an error worth failing the whole diagnostic over.
+   */
+  async subscription(): Promise<Record<string, unknown> | null> {
+    try {
+      return await this.request<Record<string, unknown>>('/v1/user/subscription');
+    } catch {
+      return null;
+    }
+  }
+
   async listConversations(agentId: string, limit = 8): Promise<ConversationSummary[]> {
     const body = await this.request<{ conversations?: ConversationSummary[] }>(
       `/v1/convai/conversations?agent_id=${encodeURIComponent(agentId)}&page_size=${limit}`,
