@@ -38,6 +38,53 @@ export const diagnosticsRoutes = (ctx: AppContext): FastifyPluginAsync =>
       };
     });
 
+    /**
+     * Where the credits went. The subscription total says how much is gone but
+     * not what spent it, and on an agent the answer is almost always "speech",
+     * split across a greeting that plays on every single session and the
+     * replies themselves.
+     */
+    app.get('/api/diagnostics/usage', async (req, reply) => {
+      const query = z.object({ days: z.coerce.number().int().min(1).max(90).default(30) }).safeParse(req.query ?? {});
+      if (!query.success) return reply.code(400).send({ error: 'Invalid query' });
+
+      const settings = await ctx.store.load();
+      if (!settings.elevenlabsApiKey) return reply.code(400).send({ error: 'No ElevenLabs API key configured' });
+      const client = new ElevenLabsClient(settings.elevenlabsApiKey);
+
+      const end = Date.now();
+      const start = end - query.data.days * 86_400_000;
+      const [total, byVoice, byModel] = await Promise.all([
+        client.characterStats(start, end),
+        client.characterStats(start, end, 'voice'),
+        client.characterStats(start, end, 'model'),
+      ]);
+
+      // What each session costs before anyone says anything: the greeting is
+      // synthesised every time a session starts.
+      const firstMessage = settings.agent.firstMessage ?? '';
+
+      const agentId = settings.provisioned.agentId;
+      const conversations = agentId ? await client.listConversations(agentId, 20) : [];
+      const durations = conversations.map((c) => c.call_duration_secs ?? 0).filter((d) => d > 0);
+
+      return {
+        windowDays: query.data.days,
+        total,
+        byVoice,
+        byModel,
+        greeting: { text: firstMessage, characters: firstMessage.length },
+        conversations: {
+          sampled: durations.length,
+          totalSecs: durations.reduce((a, b) => a + b, 0),
+          medianSecs: durations.length
+            ? [...durations].sort((a, b) => a - b)[Math.floor(durations.length / 2)]
+            : null,
+        },
+        ttsModel: settings.voice.modelId,
+      };
+    });
+
     app.get('/api/diagnostics/conversations', async (req, reply) => {
       const query = z
         .object({ limit: z.coerce.number().int().min(1).max(20).default(5), full: z.coerce.boolean().default(false) })

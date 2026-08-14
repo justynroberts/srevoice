@@ -297,6 +297,27 @@ export class ElevenLabsClient {
     }
   }
 
+  /**
+   * Usage over a window, optionally split by voice, model or resource. Answers
+   * "what is actually consuming the quota", which the headline number cannot.
+   */
+  async characterStats(
+    startUnixMs: number,
+    endUnixMs: number,
+    breakdownType?: string,
+  ): Promise<Record<string, unknown> | null> {
+    const params = new URLSearchParams({
+      start_unix: String(startUnixMs),
+      end_unix: String(endUnixMs),
+    });
+    if (breakdownType) params.set('breakdown_type', breakdownType);
+    try {
+      return await this.request<Record<string, unknown>>(`/v1/usage/character-stats?${params}`);
+    } catch {
+      return null;
+    }
+  }
+
   async listConversations(agentId: string, limit = 8): Promise<ConversationSummary[]> {
     const body = await this.request<{ conversations?: ConversationSummary[] }>(
       `/v1/convai/conversations?agent_id=${encodeURIComponent(agentId)}&page_size=${limit}`,
