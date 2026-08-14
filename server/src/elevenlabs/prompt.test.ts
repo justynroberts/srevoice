@@ -37,6 +37,23 @@ describe('buildSystemPrompt', () => {
   });
 });
 
+describe('credentials', () => {
+  // Rundeck's MCP server documents "set RUNDECK_URL and RUNDECK_TOKEN before
+  // calling" in its own tool description. ElevenLabs passes that to the model
+  // verbatim, which read it as a precondition and told the engineer their
+  // credentials were not configured — without ever calling the tool.
+  it('tells her the servers are already authenticated', () => {
+    const out = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [entry('rd__api_call', 'Rundeck')]);
+    expect(out).toMatch(/already connected and authenticated/i);
+    expect(out).toMatch(/never ask the engineer for a url, api token/i);
+  });
+
+  it('tells her to ignore setup notes in tool descriptions', () => {
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/environment variables/i);
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/documentation for whoever deployed/i);
+  });
+});
+
 describe('the skill index', () => {
   const skill = (name: string, body = 'x'.repeat(4000)) => ({
     id: name,
