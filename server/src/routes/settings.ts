@@ -22,6 +22,27 @@ const incomingMcpServer = mcpServerSchema
   .omit({ headers: true })
   .extend({ headers: z.record(z.string().nullable()).default({}) });
 
+/**
+ * A `null` header that resolved to nothing. The stored secret is keyed on the
+ * server id, so changing the id makes the lookup miss — and silently dropping
+ * the header there means the save returns 200 while the endpoint starts
+ * answering 401, with no clue as to why.
+ */
+class UnresolvedSecretError extends Error {
+  constructor(
+    readonly serverId: string,
+    readonly header: string,
+    readonly idChanged: boolean,
+  ) {
+    super(
+      idChanged
+        ? `No stored value for the "${header}" header on "${serverId}". Secrets are stored against the server id, ` +
+          `so renaming an id loses them — re-enter the value for "${header}", or change the id back.`
+        : `The "${header}" header on "${serverId}" has no value. Enter one, or remove the header.`,
+    );
+  }
+}
+
 const updateBody = z.object({
   elevenlabsApiKey: z.string().min(1).nullable().optional(),
   voice: voiceSettingsSchema.partial().optional(),
@@ -54,7 +75,9 @@ export const settingsRoutes = (ctx: AppContext): FastifyPluginAsync =>
         }
       }
 
-      const next = await ctx.store.update((current) => {
+      let next;
+      try {
+        next = await ctx.store.update((current) => {
         if (patch.elevenlabsApiKey !== undefined) {
           current.elevenlabsApiKey = patch.elevenlabsApiKey ?? undefined;
         }
@@ -68,13 +91,28 @@ export const settingsRoutes = (ctx: AppContext): FastifyPluginAsync =>
             const headers: Record<string, string> = {};
             for (const [key, value] of Object.entries(incoming.headers)) {
               const resolved = value ?? before?.headers[key];
-              if (resolved) headers[key] = resolved;
+              if (!resolved) {
+                // `null` means "keep the stored value", and there isn't one —
+                // the id changed, so the lookup missed. Dropping the header
+                // here is silent credential loss: the save returns 200 and the
+                // server starts answering 401. Refuse instead.
+                throw new UnresolvedSecretError(incoming.id, key, before === undefined);
+              }
+              headers[key] = resolved;
             }
             return { ...incoming, headers };
           });
         }
         return current;
-      });
+        });
+      } catch (err) {
+        // A rejected mutation leaves the store untouched and the write chain
+        // alive, so the operator can simply correct the field and save again.
+        if (err instanceof UnresolvedSecretError) {
+          return reply.code(400).send({ error: err.message, server: err.serverId, header: err.header });
+        }
+        throw err;
+      }
 
       // Apply MCP changes immediately — a saved-but-inert endpoint is a
       // confusing state to leave the operator in.

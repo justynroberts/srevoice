@@ -157,3 +157,52 @@ describe('isAllowedMcpUrl', () => {
     expect(isAllowedMcpUrl('not a url')).toBe(false);
   });
 });
+
+describe('secrets are keyed on the server id', () => {
+  // The browser only ever holds a masked preview, so it sends null meaning
+  // "keep what is stored". That lookup is by id — change the id and it misses.
+  // Silently dropping the header there returned 200 while the endpoint began
+  // answering 401, which is how the Rundeck bridge lost its bearer token.
+  const resolve = (
+    stored: { id: string; headers: Record<string, string> }[],
+    incoming: { id: string; headers: Record<string, string | null> },
+  ) => {
+    const previous = new Map(stored.map((s) => [s.id, s]));
+    const before = previous.get(incoming.id);
+    const out: Record<string, string> = {};
+    const unresolved: string[] = [];
+    for (const [key, value] of Object.entries(incoming.headers)) {
+      const found = value ?? before?.headers[key];
+      if (found) out[key] = found;
+      else unresolved.push(key);
+    }
+    return { headers: out, unresolved };
+  };
+
+  it('keeps a stored secret when the id is unchanged', () => {
+    const result = resolve(
+      [{ id: 'rd', headers: { Authorization: 'Bearer real-token' } }],
+      { id: 'rd', headers: { Authorization: null } },
+    );
+    expect(result.headers.Authorization).toBe('Bearer real-token');
+    expect(result.unresolved).toEqual([]);
+  });
+
+  it('cannot resolve the secret once the id changes', () => {
+    const result = resolve(
+      [{ id: 'rd', headers: { Authorization: 'Bearer real-token' } }],
+      { id: 'rundeck', headers: { Authorization: null } },
+    );
+    // The route must reject this rather than save a server with no credential.
+    expect(result.unresolved).toEqual(['Authorization']);
+    expect(result.headers).toEqual({});
+  });
+
+  it('takes an explicitly supplied value over the stored one', () => {
+    const result = resolve(
+      [{ id: 'rd', headers: { Authorization: 'Bearer old' } }],
+      { id: 'rd', headers: { Authorization: 'Bearer new' } },
+    );
+    expect(result.headers.Authorization).toBe('Bearer new');
+  });
+});

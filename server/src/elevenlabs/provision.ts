@@ -101,25 +101,37 @@ export async function provision(
     }
   }
 
-  // Tools whose MCP server was removed or renamed. Deleting is opt-in: a
-  // transient connection failure should not destroy the registration.
+  // Tools whose MCP server was removed or renamed — `rd__api_call` after the
+  // server id becomes `rundeck`, say.
   const orphans = Object.entries(existing).filter(([name]) => !(name in nextToolIds));
-  if (opts.pruneRemoved !== false) {
+  const pruning = opts.pruneRemoved !== false;
+  // Kept attached only when we are deliberately not pruning; otherwise the
+  // agent is rebuilt without them so the delete below can succeed.
+  if (!pruning) for (const [name, id] of orphans) nextToolIds[name] = id;
+
+  // The agent is updated BEFORE the orphans are deleted, and this order is
+  // load-bearing. ElevenLabs refuses to delete a tool an agent still
+  // references ("Tool is still in use by: Paige / Main", 409). Deleting first
+  // therefore always failed, and the old error path re-attached the orphan —
+  // so a renamed server left its dead tools bound to the agent permanently,
+  // and the browser, whose handlers come from the live catalogue, had nothing
+  // to answer them with: "Client tool with name rd__api_list is not defined
+  // on client".
+  const agentBody = buildAgentBody(settings, catalogue, Object.values(nextToolIds), await skills.active());
+  const agentId = await upsertAgent(client, settings, agentBody);
+
+  if (pruning) {
     for (const [name, id] of orphans) {
       try {
         await client.deleteTool(id);
         removed.push(name);
       } catch (err) {
-        warnings.push(`Could not delete stale tool ${name}: ${(err as Error).message}`);
-        nextToolIds[name] = id;
+        // Detached from the agent above, so it is already harmless — it is
+        // just litter in the ElevenLabs account. Do not re-attach it.
+        warnings.push(`Stale tool ${name} is detached but could not be deleted: ${(err as Error).message}`);
       }
     }
-  } else {
-    for (const [name, id] of orphans) nextToolIds[name] = id;
   }
-
-  const agentBody = buildAgentBody(settings, catalogue, Object.values(nextToolIds), await skills.active());
-  const agentId = await upsertAgent(client, settings, agentBody);
 
   await store.update((current) => ({
     ...current,
