@@ -14,9 +14,26 @@ extension that loads wins; extensions are tried in order `webp`, `gif`, `png`,
 
 Any state with no file falls back to the animated orb, so a partial set is fine.
 
-Square art, 256px or larger; it renders as a 56px circle, so keep the subject
-centred. Animated GIF and WebP both work.
+## Light theme
 
-The committed set was resized to 256px and converted with:
+`light/` holds art for the light theme, using the same filenames. In light mode
+each state tries `light/` first and falls back to the default set, so a partial
+light set is not a broken image — the states you have art for use it and the
+rest borrow the dark art.
 
-    sips -Z 256 source.png --out tmp.png && cwebp -q 88 tmp.png -o state.webp
+Portraits are drawn against a background rather than cut out, so a near-white
+matte in a dark console reads as a rendering fault rather than as a portrait.
+That is the whole reason for the split; if your art is a transparent PNG you do
+not need `light/` at all.
+
+There is no `dark/` — the top level *is* the dark set, which keeps existing
+installs working untouched.
+
+## Making the files
+
+Square art. It renders as a 132px circle, so keep the subject centred and
+supply at least 264px; the committed sets are 384px, which covers 2× displays.
+
+    cwebp -q 82 -resize 384 384 source.png -o light/listening.webp
+
+Animated GIF and WebP both work.

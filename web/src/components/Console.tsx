@@ -156,7 +156,7 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
       <header className="flex shrink-0 items-center justify-between gap-4 border-b border-line px-5 py-3">
         <div className="flex items-center gap-4">
           <Avatar activity={activity} muted={isMuted} name={agentName} />
-          <div className="hidden h-10 w-px bg-line sm:block" />
+          <div className="hidden h-16 w-px bg-line sm:block" />
           <div className="hidden sm:block">
             <ConnectionSummary statuses={statuses} toolCount={tools.length} />
           </div>

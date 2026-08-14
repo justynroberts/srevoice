@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import type { Activity } from '../hooks/useSreConversation';
+import { useTheme } from '../hooks/useTheme';
 import { VoiceOrb } from './VoiceOrb';
 
 /**
@@ -26,16 +27,27 @@ const STATE_FILE: Record<Activity, string[]> = {
   speaking: ['speaking'],
 };
 
-/** Resolves the first name-and-extension pair that actually loads. */
-function useAvatarSource(names: string[]): string | null {
+/**
+ * Resolves the first name-and-extension pair that actually loads.
+ *
+ * Light-theme art is looked for first under `/avatars/light/` and falls through
+ * to the default set, so a half-finished light set is not a broken image — each
+ * state independently uses light art if it exists and the dark art if it does
+ * not. Artwork is drawn against a background, and a portrait matted in near-white
+ * sitting in a dark console reads as a bug rather than as a portrait.
+ */
+function useAvatarSource(names: string[], theme: 'light' | 'dark'): string | null {
   const [src, setSrc] = useState<string | null>(null);
-  const key = names.join(',');
+  const key = `${theme}:${names.join(',')}`;
 
   useEffect(() => {
     let cancelled = false;
     setSrc(null);
 
-    const candidates = names.flatMap((n) => EXTENSIONS.map((ext) => `/avatars/${n}.${ext}`));
+    const dirs = theme === 'light' ? ['light/', ''] : [''];
+    const candidates = dirs.flatMap((dir) =>
+      names.flatMap((n) => EXTENSIONS.map((ext) => `/avatars/${dir}${n}.${ext}`)),
+    );
     const tryNext = (i: number) => {
       if (cancelled || i >= candidates.length) return;
       const img = new Image();
@@ -66,7 +78,8 @@ export function Avatar({
   muted: boolean;
   name: string;
 }) {
-  const src = useAvatarSource(STATE_FILE[activity]);
+  const { resolved } = useTheme();
+  const src = useAvatarSource(STATE_FILE[activity], resolved);
 
   if (!src) {
     return (
@@ -81,10 +94,10 @@ export function Avatar({
 
   return (
     <div className="flex items-center gap-3.5">
-      <div className="relative h-[5.5rem] w-[5.5rem] shrink-0">
+      <div className="relative h-[8.25rem] w-[8.25rem] shrink-0">
         {/* A ring echoes the state for anyone whose artwork is a still image. */}
         <motion.span
-          className={`absolute -inset-1.5 rounded-full border-2 ${
+          className={`absolute -inset-2 rounded-full border-2 ${
             muted && live
               ? 'border-warn/50'
               : activity === 'offline'
@@ -115,14 +128,14 @@ export function Avatar({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
-            className="h-[5.5rem] w-[5.5rem] rounded-full object-cover"
+            className="h-[8.25rem] w-[8.25rem] rounded-full object-cover"
           />
         </AnimatePresence>
       </div>
 
       <div className="leading-tight">
-        <p className="text-[15px] font-semibold text-ink">{name}</p>
-        <p className="text-[12px] text-ink-dim">{caption}</p>
+        <p className="text-[17px] font-semibold text-ink">{name}</p>
+        <p className="text-[13px] text-ink-dim">{caption}</p>
       </div>
     </div>
   );
