@@ -142,7 +142,9 @@ export function Avatar({
 }
 
 const CAPTION: Record<Activity, string> = {
-  offline: 'Offline',
+  // Idle, not broken. "Offline" reads as a fault to anyone who has not been
+  // told the session has to be started.
+  offline: 'Ready to help — click Start session to begin',
   connecting: 'Waking up…',
   listening: 'Listening',
   thinking: 'Looking that up…',

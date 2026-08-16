@@ -8,7 +8,7 @@ interface Props {
 }
 
 const COPY: Record<Activity, { label: string; sub: string }> = {
-  offline: { label: 'Offline', sub: 'not connected' },
+  offline: { label: 'Ready to help', sub: 'click Start session to begin' },
   connecting: { label: 'Waking up', sub: 'one moment' },
   listening: { label: 'Listening', sub: 'go ahead' },
   thinking: { label: 'Thinking', sub: 'looking that up' },

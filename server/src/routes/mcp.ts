@@ -5,6 +5,7 @@ import { logger } from '../logger.js';
 import { renderToolResult, type RenderedResult } from '../mcp/render.js';
 import { MEMORY_TOOLS, runMemoryTool, isMemoryTool } from '../memory/tools.js';
 import { guardToolCall, recordAuthorship } from '../mcp/guard.js';
+import { scheduleRemediationFollowUp } from '../mcp/followup.js';
 
 /**
  * How long the browser waits before answering the agent with "still working".
@@ -114,6 +115,11 @@ export const mcpRoutes = (ctx: AppContext): FastifyPluginAsync =>
             // Remember anything it just created, so a later session — which
             // knows nothing of this one — still refuses to run it.
             await recordAuthorship(ctx.authored, tool, args, rendered);
+            // "Started the rollback" is not "the rollback worked". Go back and
+            // look, rather than leaving the engineer to remember to ask.
+            if (!rendered.isError) {
+              scheduleRemediationFollowUp(ctx.pool, ctx.pending, tool, args);
+            }
             return rendered;
           });
 

@@ -163,3 +163,17 @@ describe('running automation', () => {
     expect(DEFAULT_SYSTEM_PROMPT).toMatch(/never tell the engineer to click/i);
   });
 });
+
+describe('tool names in the prompt', () => {
+  it('names no server prefix that a rename could invalidate', () => {
+    // The Rundeck server id was `rd` and became `rundeck`; the prompt kept
+    // naming tools that no longer existed. Prefixes are per-install, so the
+    // prompt must point at the catalogue rather than hardcode one.
+    expect(DEFAULT_SYSTEM_PROMPT).not.toMatch(/\brd__/);
+    expect(DEFAULT_SYSTEM_PROMPT).not.toMatch(/\brundeck__/);
+  });
+
+  it('tells the agent where the real names live', () => {
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/carry their server's prefix/i);
+  });
+});
