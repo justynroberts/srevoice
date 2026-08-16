@@ -48,29 +48,17 @@ export type Activity = 'offline' | 'connecting' | 'listening' | 'thinking' | 'sp
  * try to pick it back up.
  */
 /**
- * The full introduction is for meeting her; it is noise on the fourth restart
- * of a demo. Kept per browser tab, so a new tab (or a new audience) gets the
- * introduction again while stop/start inside one session does not.
+ * The full introduction is for meeting her; it is noise on the fourth restart of
+ * a demo. So: once per page load.
+ *
+ * Module state on purpose, not sessionStorage — a reload is how someone starts a
+ * fresh run in front of a new audience, and that audience should be introduced
+ * to her. Stopping and starting within the same page is the same audience, and
+ * gets the short line. A component remount is not a reload and does not reset
+ * this.
  */
-const GREETED_KEY = 'srevoice.greeted';
+let introduced = false;
 const SHORT_GREETING = 'How can I help?';
-
-function hasGreeted(): boolean {
-  try {
-    return sessionStorage.getItem(GREETED_KEY) === 'true';
-  } catch {
-    // Private mode or a blocked store — greeting twice is not worth an error.
-    return false;
-  }
-}
-
-function markGreeted(): void {
-  try {
-    sessionStorage.setItem(GREETED_KEY, 'true');
-  } catch {
-    /* see hasGreeted */
-  }
-}
 
 const MAX_RESUME_ATTEMPTS = 4;
 const RESUME_BACKOFF_MS = [400, 1200, 3000, 6000];
@@ -417,14 +405,15 @@ export function useSreConversation() {
 
       // Synchronous: failures after this point surface through onError, and
       // onConnect is what moves the phase to 'live'.
-      // Full introduction the first time, a short line on every restart after
-      // it. Requires `first_message` to be an allowed override on the agent,
-      // which provisioning sets.
+      //
+      // Full introduction on the first session of a page load, the short line
+      // on every restart after it. Overriding `first_message` requires the
+      // agent to permit it, which provisioning sets.
       conversation.startSession({
         signedUrl: session.signedUrl,
-        ...(hasGreeted() ? { overrides: { agent: { firstMessage: SHORT_GREETING } } } : {}),
+        ...(introduced ? { overrides: { agent: { firstMessage: SHORT_GREETING } } } : {}),
       });
-      markGreeted();
+      introduced = true;
 
       // Every session opens listening, but do NOT call setMuted here to force
       // it: the SDK throws "No active conversation" until onConnect lands, and
