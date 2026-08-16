@@ -142,3 +142,24 @@ describe('a saved prompt stops tracking the built-in one', () => {
     expect(status.ownSections).toEqual(['Our escalation ladder']);
   });
 });
+
+describe('running automation', () => {
+  // The agent may start a workflow someone approved; it may not run automation
+  // it wrote itself. It once refused a workflow "for security reasons" while
+  // the operator's own rules said workflows were pre-approved — the line is
+  // authorship, not how risky the action sounds.
+  it('states that workflows are pre-approved', () => {
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/workflows are pre-approved/i);
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/never refuse one/i);
+  });
+
+  it('states that a job it wrote is handed over, not run', () => {
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/a job you wrote, you do not run/i);
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/somebody else wrote is theirs/i);
+  });
+
+  it('forbids inventing a security restriction', () => {
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/no security policy of your own/i);
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/never tell the engineer to click/i);
+  });
+});

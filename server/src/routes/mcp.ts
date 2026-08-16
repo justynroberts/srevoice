@@ -4,6 +4,7 @@ import type { AppContext } from '../context.js';
 import { logger } from '../logger.js';
 import { renderToolResult, type RenderedResult } from '../mcp/render.js';
 import { MEMORY_TOOLS, runMemoryTool, isMemoryTool } from '../memory/tools.js';
+import { guardToolCall, recordAuthorship } from '../mcp/guard.js';
 
 /**
  * How long the browser waits before answering the agent with "still working".
@@ -86,9 +87,35 @@ export const mcpRoutes = (ctx: AppContext): FastifyPluginAsync =>
       const callId = parsed.data.callId ?? `call-${Date.now()}`;
       const startedAt = Date.now();
 
+      // The agent may start a workflow someone approved in advance; it may not
+      // run an automation job it wrote itself. Checked here rather than in the
+      // prompt, because a rule that matters cannot depend on the agent
+      // choosing to honour it.
+      const refused = await guardToolCall(ctx.authored, tool, args);
+      if (refused) {
+        logger.warn({ tool, args }, 'Refused an agent-authored execution');
+        return {
+          callId,
+          tool,
+          args,
+          ok: true,
+          pending: false,
+          speech: refused.speech,
+          display: refused.display,
+          truncated: false,
+          durationMs: Date.now() - startedAt,
+        };
+      }
+
       const work: Promise<RenderedResult> = isMemoryTool(tool)
         ? runMemoryTool(ctx, tool, args)
-        : ctx.pool.call(tool, args).then(renderToolResult);
+        : ctx.pool.call(tool, args).then(async (raw) => {
+            const rendered = renderToolResult(raw);
+            // Remember anything it just created, so a later session — which
+            // knows nothing of this one — still refuses to run it.
+            await recordAuthorship(ctx.authored, tool, args, rendered);
+            return rendered;
+          });
 
       // Register before racing, so a call that outruns the budget is already
       // tracked and nothing depends on this request surviving.

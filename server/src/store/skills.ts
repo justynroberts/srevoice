@@ -98,7 +98,14 @@ project out loud, and put the result on screen.
 
 ## House rules
 - Say what you are about to create before creating it.
-- Never run a job as part of creating it unless you were asked to.`,
+- **Never run a job you wrote.** Not as part of creating it, not when asked
+  afterwards, not in a later session. Composing a job means composing commands;
+  running it executes them. Hand it over instead: say the job name, the project,
+  and that someone needs to read it and start it. The console enforces this, so
+  attempting it wastes a turn.
+- A job somebody else wrote is theirs, and you may run it if asked.
+- Workflows are the opposite case — pre-approved, and yours to run. If the
+  engineer wants something executed now, look for a workflow that covers it.`,
     enabled: true,
   },
   {
