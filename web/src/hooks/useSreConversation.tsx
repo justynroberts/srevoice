@@ -102,6 +102,8 @@ interface SreState {
   clear: () => void;
   /** True while a deliberate stop is in flight. */
   stoppingRef: React.MutableRefObject<boolean>;
+  /** Identifies the conversation; stable across a resume. */
+  sessionIdRef: React.MutableRefObject<string>;
 }
 
 const SreStateContext = createContext<SreState | null>(null);
@@ -134,6 +136,15 @@ export function SreConversationProvider({
    * from "the socket died", and both used to end the conversation.
    */
   const stoppingRef = useRef(false);
+  /**
+   * Identifies this conversation. Sent with every tool call and every poll, so
+   * work that finishes after a session ends is never handed to the next one —
+   * a post-remediation check settling ninety seconds later would otherwise be
+   * announced into whatever conversation happened to be open.
+   *
+   * Kept across a resume, because a reconnected conversation is the same one.
+   */
+  const sessionIdRef = useRef<string>('');
 
   const addTurn = useCallback((role: Turn['role'], text: string) => {
     const clean = text?.trim();
@@ -169,6 +180,7 @@ export function SreConversationProvider({
         tool,
         args: params ?? {},
         callId,
+        sessionId: sessionIdRef.current || undefined,
       });
       setToolCalls((prev) =>
         prev.map((c) =>
@@ -240,6 +252,7 @@ export function SreConversationProvider({
       setResumeToken,
       setAwaitingReply,
       stoppingRef,
+      sessionIdRef,
       addTurn,
       settlePending,
       clear: () => {
@@ -328,7 +341,9 @@ export function useSreConversation() {
     let cancelled = false;
     const tick = async () => {
       try {
-        const poll = await api.get<PendingPoll>('/api/mcp/pending');
+        const poll = await api.get<PendingPoll>(
+          `/api/mcp/pending?sessionId=${encodeURIComponent(state.sessionIdRef.current)}`,
+        );
         if (cancelled) return;
         for (const settled of poll.settled) {
           settlePending(settled);
@@ -374,6 +389,9 @@ export function useSreConversation() {
   const start = useCallback(async () => {
     if (startingRef.current) return;
     startingRef.current = true;
+    // A fresh conversation, so a fresh id. Late work from the previous one is
+    // now addressed to a session that no longer exists and will be dropped.
+    state.sessionIdRef.current = nextId('session');
     setProblem(null);
     setPhase('requesting-mic');
 

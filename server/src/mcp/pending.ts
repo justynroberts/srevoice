@@ -6,6 +6,15 @@ const RETAIN_MS = 15 * 60_000;
 
 export interface PendingCall {
   callId: string;
+  /**
+   * The conversation that asked. A result belongs to the conversation that
+   * started it and to no other: settled work outlives the session that began
+   * it, and without this the next session's first poll collects it and the
+   * agent announces an answer to a question nobody in the room asked.
+   *
+   * Survives a reconnect, because a resumed conversation is the same one.
+   */
+  sessionId?: string;
   tool: string;
   args: Record<string, unknown>;
   startedAt: number;
@@ -33,9 +42,15 @@ export interface PendingCall {
 export class PendingCalls {
   private calls = new Map<string, PendingCall>();
 
-  track(callId: string, tool: string, args: Record<string, unknown>, work: Promise<RenderedResult>): void {
+  track(
+    callId: string,
+    tool: string,
+    args: Record<string, unknown>,
+    work: Promise<RenderedResult>,
+    sessionId?: string,
+  ): void {
     const startedAt = Date.now();
-    this.calls.set(callId, { callId, tool, args, startedAt });
+    this.calls.set(callId, { callId, tool, args, startedAt, sessionId });
 
     void work
       .then((result) => {
@@ -72,19 +87,33 @@ export class PendingCalls {
    * collection rather than deleting keeps a repeated poll idempotent, which
    * matters when the browser reconnects and re-polls.
    */
-  collectSettled(): PendingCall[] {
+  collectSettled(sessionId?: string): PendingCall[] {
     const ready: PendingCall[] = [];
     for (const call of this.calls.values()) {
-      if (call.settledAt && !call.collected && !call.answeredInline) {
+      if (!call.settledAt || call.collected || call.answeredInline) continue;
+
+      // Belongs to a conversation that has since ended. Mark it collected so it
+      // is not offered to the next one, and say so — silently dropping an
+      // answer somebody waited for should be visible in the log.
+      if (sessionId && call.sessionId && call.sessionId !== sessionId) {
         this.calls.set(call.callId, { ...call, collected: true });
-        ready.push(call);
+        logger.info(
+          { callId: call.callId, tool: call.tool },
+          'Discarded a late result belonging to an earlier session',
+        );
+        continue;
       }
+
+      this.calls.set(call.callId, { ...call, collected: true });
+      ready.push(call);
     }
     return ready;
   }
 
-  outstanding(): PendingCall[] {
-    return [...this.calls.values()].filter((c) => !c.settledAt);
+  outstanding(sessionId?: string): PendingCall[] {
+    return [...this.calls.values()].filter(
+      (c) => !c.settledAt && (!sessionId || !c.sessionId || c.sessionId === sessionId),
+    );
   }
 
   private sweep(): void {

@@ -120,6 +120,7 @@ export function scheduleRemediationFollowUp(
   tool: string,
   args: Record<string, unknown>,
   delayMs = FOLLOW_UP_DELAY_MS,
+  sessionId?: string,
 ): void {
   if (!startsRemediation(tool)) return;
 
@@ -164,6 +165,8 @@ export function scheduleRemediationFollowUp(
     return summarise(unwrap(incident), unwrap(notes), startedAt);
   })();
 
-  pending.track(callId, `${serverId}__incident_followup`, { incident_id: incidentId }, work);
+  // Carries the session of the call that triggered it, so the answer reaches
+  // the conversation that ordered the remediation and no later one.
+  pending.track(callId, `${serverId}__incident_followup`, { incident_id: incidentId }, work, sessionId);
   logger.info({ incidentId, delayMs }, 'Scheduled a post-remediation check');
 }

@@ -21,6 +21,8 @@ const callBody = z.object({
   tool: z.string().min(1).max(128),
   args: z.record(z.unknown()).default({}),
   callId: z.string().max(128).optional(),
+  /** Which conversation asked, so a late answer is never given to another one. */
+  sessionId: z.string().max(128).optional(),
 });
 
 export const mcpRoutes = (ctx: AppContext): FastifyPluginAsync =>
@@ -84,7 +86,7 @@ export const mcpRoutes = (ctx: AppContext): FastifyPluginAsync =>
       if (!parsed.success) {
         return reply.code(400).send({ error: 'Invalid tool call', issues: parsed.error.issues });
       }
-      const { tool, args } = parsed.data;
+      const { tool, args, sessionId } = parsed.data;
       const callId = parsed.data.callId ?? `call-${Date.now()}`;
       const startedAt = Date.now();
 
@@ -118,14 +120,14 @@ export const mcpRoutes = (ctx: AppContext): FastifyPluginAsync =>
             // "Started the rollback" is not "the rollback worked". Go back and
             // look, rather than leaving the engineer to remember to ask.
             if (!rendered.isError) {
-              scheduleRemediationFollowUp(ctx.pool, ctx.pending, tool, args);
+              scheduleRemediationFollowUp(ctx.pool, ctx.pending, tool, args, undefined, sessionId);
             }
             return rendered;
           });
 
       // Register before racing, so a call that outruns the budget is already
       // tracked and nothing depends on this request surviving.
-      ctx.pending.track(callId, tool, args, work);
+      ctx.pending.track(callId, tool, args, work, sessionId);
 
       const outcome = await Promise.race([
         work.then((r) => ({ done: true as const, r })).catch((e: unknown) => ({ done: true as const, e })),
@@ -187,10 +189,13 @@ export const mcpRoutes = (ctx: AppContext): FastifyPluginAsync =>
      * Results of calls that outran their turn. The browser polls this while a
      * session is live and feeds anything it finds back as a contextual update.
      */
-    app.get('/api/mcp/pending', async () => {
-      const settled = ctx.pending.collectSettled();
+    app.get('/api/mcp/pending', async (req) => {
+      const query = z.object({ sessionId: z.string().max(128).optional() }).safeParse(req.query ?? {});
+      const sessionId = query.success ? query.data.sessionId : undefined;
+
+      const settled = ctx.pending.collectSettled(sessionId);
       return {
-        outstanding: ctx.pending.outstanding().map((c) => ({
+        outstanding: ctx.pending.outstanding(sessionId).map((c) => ({
           callId: c.callId,
           tool: c.tool,
           waitingMs: Date.now() - c.startedAt,
