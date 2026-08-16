@@ -35,10 +35,45 @@ export interface ToolCall {
   durationMs?: number;
 }
 
-export type SessionPhase = 'idle' | 'requesting-mic' | 'connecting' | 'live' | 'ending';
+export type SessionPhase = 'idle' | 'requesting-mic' | 'connecting' | 'live' | 'ending' | 'reconnecting';
 
 /** What Paige is doing right now — drives the orb. */
 export type Activity = 'offline' | 'connecting' | 'listening' | 'thinking' | 'speaking';
+
+/**
+ * A dropped socket is not a finished conversation. ElevenLabs reports a clean
+ * close as `reason: 'user'`; anything else — a 1006 abnormal closure from a
+ * network blip, a proxy, or a laptop changing wifi — used to be handled
+ * identically, so the session simply stopped mid-demo. These bound how hard we
+ * try to pick it back up.
+ */
+/**
+ * The full introduction is for meeting her; it is noise on the fourth restart
+ * of a demo. Kept per browser tab, so a new tab (or a new audience) gets the
+ * introduction again while stop/start inside one session does not.
+ */
+const GREETED_KEY = 'srevoice.greeted';
+const SHORT_GREETING = 'How can I help?';
+
+function hasGreeted(): boolean {
+  try {
+    return sessionStorage.getItem(GREETED_KEY) === 'true';
+  } catch {
+    // Private mode or a blocked store — greeting twice is not worth an error.
+    return false;
+  }
+}
+
+function markGreeted(): void {
+  try {
+    sessionStorage.setItem(GREETED_KEY, 'true');
+  } catch {
+    /* see hasGreeted */
+  }
+}
+
+const MAX_RESUME_ATTEMPTS = 4;
+const RESUME_BACKOFF_MS = [400, 1200, 3000, 6000];
 
 export interface SessionProblem {
   message: string;
@@ -55,13 +90,18 @@ interface SreState {
   problem: SessionProblem | null;
   awaitingReply: boolean;
   endRequested: boolean;
+  /** Bumped by an unexpected disconnect; the consumer hook does the reconnect. */
+  resumeToken: number;
   setPhase: (p: SessionPhase) => void;
   setEndRequested: (v: boolean) => void;
+  setResumeToken: (v: number) => void;
   setProblem: (p: SessionProblem | null) => void;
   setAwaitingReply: (v: boolean) => void;
   addTurn: (role: Turn['role'], text: string) => void;
   settlePending: (result: ToolCallResponse) => void;
   clear: () => void;
+  /** True while a deliberate stop is in flight. */
+  stoppingRef: React.MutableRefObject<boolean>;
 }
 
 const SreStateContext = createContext<SreState | null>(null);
@@ -87,6 +127,13 @@ export function SreConversationProvider({
   const [problem, setProblem] = useState<SessionProblem | null>(null);
   const [awaitingReply, setAwaitingReply] = useState(false);
   const [endRequested, setEndRequested] = useState(false);
+  const [resumeToken, setResumeToken] = useState(0);
+  /**
+   * Set while a deliberate stop is in flight — the End session button, or
+   * session__end. Without it there is no way to tell "the engineer finished"
+   * from "the socket died", and both used to end the conversation.
+   */
+  const stoppingRef = useRef(false);
 
   const addTurn = useCallback((role: Turn['role'], text: string) => {
     const clean = text?.trim();
@@ -186,10 +233,13 @@ export function SreConversationProvider({
       problem,
       awaitingReply,
       endRequested,
+      resumeToken,
       setPhase,
       setProblem,
       setEndRequested,
+      setResumeToken,
       setAwaitingReply,
+      stoppingRef,
       addTurn,
       settlePending,
       clear: () => {
@@ -198,7 +248,7 @@ export function SreConversationProvider({
         setAwaitingReply(false);
       },
     }),
-    [turns, toolCalls, phase, problem, awaitingReply, endRequested, addTurn, settlePending],
+    [turns, toolCalls, phase, problem, awaitingReply, endRequested, resumeToken, addTurn, settlePending],
   );
 
   return (
@@ -208,13 +258,27 @@ export function SreConversationProvider({
         setPhase('live');
         setProblem(null);
       }}
-      onDisconnect={() => {
-        setPhase('idle');
+      onDisconnect={(details?: { reason?: string; closeCode?: number; message?: string }) => {
         setAwaitingReply(false);
+
+        // `reason: 'user'` is a clean close — the button, or session__end.
+        // Anything else is the socket dying underneath a live conversation:
+        // in practice a 1006 abnormal closure from a network blip or a proxy,
+        // which used to look exactly like the engineer saying goodbye.
+        const deliberate = stoppingRef.current || details?.reason === 'user';
+        if (deliberate) {
+          stoppingRef.current = false;
+          setPhase('idle');
+          return;
+        }
+
+        setPhase('reconnecting');
+        setResumeToken((n) => n + 1);
       }}
       onError={(message: string) => {
+        // Errors arrive alongside a disconnect. Record the problem but leave
+        // the phase alone, or this would cancel a resume already in progress.
         setProblem({ message: message || 'Voice connection error', needs: null });
-        setPhase('idle');
       }}
       onMessage={({ message, role, source }) => {
         // `role` supersedes the deprecated `source`; both are present today.
@@ -245,6 +309,8 @@ export function useSreConversation() {
    * recording indicator — which quite reasonably reads as "it didn't end".
    */
   const micRef = useRef<MediaStream | null>(null);
+  /** Consecutive failed resumes, reset by a successful connect or a real stop. */
+  const resumeAttemptsRef = useRef(0);
 
   /**
    * Results that outran their turn.
@@ -295,7 +361,7 @@ export function useSreConversation() {
    * user transcript covers the rest.
    */
   const activity: Activity =
-    phase === 'connecting' || phase === 'requesting-mic'
+    phase === 'connecting' || phase === 'requesting-mic' || phase === 'reconnecting'
       ? 'connecting'
       : phase !== 'live'
         ? 'offline'
@@ -333,7 +399,14 @@ export function useSreConversation() {
 
       // Synchronous: failures after this point surface through onError, and
       // onConnect is what moves the phase to 'live'.
-      conversation.startSession({ signedUrl: session.signedUrl });
+      // Full introduction the first time, a short line on every restart after
+      // it. Requires `first_message` to be an allowed override on the agent,
+      // which provisioning sets.
+      conversation.startSession({
+        signedUrl: session.signedUrl,
+        ...(hasGreeted() ? { overrides: { agent: { firstMessage: SHORT_GREETING } } } : {}),
+      });
+      markGreeted();
 
       // Every session opens listening, but do NOT call setMuted here to force
       // it: the SDK throws "No active conversation" until onConnect lands, and
@@ -366,6 +439,10 @@ export function useSreConversation() {
   }, []);
 
   const stop = useCallback(async () => {
+    // Flagged before endSession so onDisconnect knows this close was asked
+    // for, and does not try to resume the conversation we are ending.
+    state.stoppingRef.current = true;
+    resumeAttemptsRef.current = 0;
     setPhase('ending');
     try {
       // Awaited: the socket teardown is asynchronous, and returning to idle
@@ -378,9 +455,74 @@ export function useSreConversation() {
       setAwaitingReply(false);
       setPhase('idle');
     }
-  }, [conversation, setPhase, setAwaitingReply, releaseMic]);
+  }, [conversation, state, setPhase, setAwaitingReply, releaseMic]);
 
-  // A dropped connection releases the microphone too.
+  /**
+   * The socket dropped without anyone asking. Get a fresh signed URL and pick
+   * the conversation back up, keeping the transcript and the results panel.
+   *
+   * A new signed URL is required rather than reusing the old one: they are
+   * single-use and short-lived. The microphone stream is deliberately left
+   * open — it was granted for this session and re-requesting it can put a
+   * permission prompt on screen mid-demo.
+   */
+  useEffect(() => {
+    if (state.resumeToken === 0) return;
+    if (state.stoppingRef.current) return;
+
+    const attempt = resumeAttemptsRef.current;
+    if (attempt >= MAX_RESUME_ATTEMPTS) {
+      setProblem({
+        message: `The voice connection dropped and could not be re-established after ${MAX_RESUME_ATTEMPTS} attempts. Your transcript is intact — press Start session to carry on.`,
+        needs: null,
+      });
+      setPhase('idle');
+      resumeAttemptsRef.current = 0;
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(
+      () => {
+        if (cancelled) return;
+        resumeAttemptsRef.current = attempt + 1;
+        void (async () => {
+          try {
+            const session = await api.post<SessionStart>('/api/session/start');
+            if (cancelled) return;
+            // Silent on resume: she was mid-sentence, and reintroducing
+            // herself is the loudest possible way to announce a wobble.
+            conversation.startSession({
+              signedUrl: session.signedUrl,
+              overrides: { agent: { firstMessage: '' } },
+            });
+            addTurn('system', attempt === 0 ? 'Connection dropped — reconnecting…' : 'Still reconnecting…');
+          } catch {
+            // Bump the token so this effect runs again for the next attempt.
+            if (!cancelled) state.setResumeToken(state.resumeToken + 1);
+          }
+        })();
+      },
+      RESUME_BACKOFF_MS[Math.min(attempt, RESUME_BACKOFF_MS.length - 1)],
+    );
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.resumeToken]);
+
+  // A reconnect that lands clears the attempt counter and the warning.
+  useEffect(() => {
+    if (phase === 'live') {
+      resumeAttemptsRef.current = 0;
+    }
+  }, [phase]);
+
+  // Only a session that is genuinely over releases the microphone. A resume in
+  // progress still needs it, and re-requesting mid-demo can raise a permission
+  // prompt over whatever is on screen.
   useEffect(() => {
     if (phase === 'idle') releaseMic();
   }, [phase, releaseMic]);

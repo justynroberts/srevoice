@@ -111,6 +111,9 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
   }, [panelOpen]);
 
   const live = phase === 'live';
+  // A resume in flight is still a session — offering "Start session" here would
+  // invite a second one on top of the conversation being recovered.
+  const inSession = live || phase === 'reconnecting' || phase === 'ending';
   const running = toolCalls.filter((c) => c.status === 'running').length;
 
   // Newest first. Built explicitly rather than with `flex-col-reverse`, which
@@ -163,7 +166,7 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
         </div>
 
         <div className="flex items-center gap-2">
-          {live && <MicToggle muted={isMuted} onToggle={toggleMic} />}
+          {inSession && <MicToggle muted={isMuted} onToggle={toggleMic} />}
           {turns.length > 0 && (
             <Button tone="ghost" onClick={clear} className="hidden sm:inline-flex">
               <Icon.clear />
@@ -171,12 +174,12 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
             </Button>
           )}
           <Button
-            tone={live ? 'danger' : 'primary'}
-            onClick={live ? stop : start}
-            loading={phase === 'connecting' || phase === 'requesting-mic' || phase === 'ending'}
+            tone={inSession ? 'danger' : 'primary'}
+            onClick={inSession ? stop : start}
+            loading={phase === 'connecting' || phase === 'requesting-mic' || phase === 'ending' || phase === 'reconnecting'}
           >
-            {live ? <Icon.stop /> : <Icon.play />}
-            {live ? 'End session' : 'Start session'}
+            {inSession ? <Icon.stop /> : <Icon.play />}
+            {inSession ? 'End session' : 'Start session'}
           </Button>
           <Button
             tone="ghost"
@@ -263,7 +266,9 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
                 onChange={(e) => setDraft(e.target.value)}
                 disabled={!live}
                 placeholder={
-                  !live
+                  phase === 'reconnecting'
+                    ? 'Reconnecting…'
+                    : !live
                     ? 'Start a session to talk'
                     : isMuted
                       ? `Mic is off — type to ${agentName}`

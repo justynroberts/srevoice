@@ -206,6 +206,20 @@ function buildAgentBody(
         client_events: ['audio', 'interruption', 'user_transcript', 'agent_response', 'agent_tool_response'],
       },
     },
+    platform_settings: {
+      overrides: {
+        conversation_config_override: {
+          agent: {
+            // The browser varies the opening line per session: the full
+            // introduction once, a short "how can I help" on a restart, and
+            // nothing at all when resuming a dropped connection. ElevenLabs
+            // rejects an override the agent has not opted into, so this flag
+            // is what makes those three cases possible at all.
+            first_message: true,
+          },
+        },
+      },
+    },
   };
 }
 
