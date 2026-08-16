@@ -301,7 +301,8 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
               <>
                 <span className="flex items-baseline gap-2">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
-                    What she looked up
+                    {agentName}
+                    {'\u2019'}s notepad
                   </span>
                   {running > 0 && (
                     <span className="text-[11px] text-accent">{running} running</span>
@@ -337,7 +338,7 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
                 <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
                   <p className="text-[13px] text-ink-dim">Nothing looked up yet.</p>
                   <p className="max-w-xs text-[12px] leading-relaxed text-ink-faint">
-                    Everything {agentName} checks lands here in full, while she gives you the short
+                    Everything {agentName} looks up lands here in full, while she gives you the short
                     version out loud.
                   </p>
                 </div>
@@ -357,7 +358,8 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
               onClick={() => setPanelOpen(true)}
               className="min-h-0 flex-1 [writing-mode:vertical-rl] py-4 text-[11px] font-semibold uppercase tracking-wider text-ink-faint transition-colors hover:text-accent"
             >
-              What she looked up
+              {agentName}
+              {'\u2019'}s notepad
               {toolCalls.length > 0 && ` · ${toolCalls.length}`}
             </button>
           )}
