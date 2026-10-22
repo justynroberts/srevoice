@@ -314,3 +314,100 @@ export function normaliseToolParameters(inputSchema: unknown): Record<string, un
   if (!normalised.required) normalised.required = [];
   return normalised;
 }
+
+/* ------------------------------------------------------------------------ */
+/* The way back: arguments from ElevenLabs into the MCP server's real shape  */
+/* ------------------------------------------------------------------------ */
+
+const UNION_KEYS = ['anyOf', 'oneOf', 'allOf'] as const;
+
+function branchesOf(node: JsonSchemaLike): JsonSchemaLike[] {
+  return UNION_KEYS.flatMap((key) => {
+    const branches = node[key];
+    return Array.isArray(branches) ? branches.filter((b): b is JsonSchemaLike => !!b && typeof b === 'object') : [];
+  });
+}
+
+/** Every type a node can take, looking through unions. */
+function typesOf(node: JsonSchemaLike, depth = 0): Set<string> {
+  const types = new Set<string>();
+  if (typeof node.type === 'string') types.add(node.type);
+  if (Array.isArray(node.type)) node.type.forEach((t) => typeof t === 'string' && types.add(t));
+  if (node.properties) types.add('object');
+  if (node.items) types.add('array');
+  if (typeof node.const === 'string' || (Array.isArray(node.enum) && node.enum.some((v) => typeof v === 'string'))) {
+    types.add('string');
+  }
+  if (depth < 8) for (const branch of branchesOf(node)) typesOf(branch, depth + 1).forEach((t) => types.add(t));
+  return types;
+}
+
+/**
+ * The properties to check an object value against. For a union of variants,
+ * the one whose discriminator matches the value comes first, so a key that
+ * means different things in different operations is read the right way.
+ */
+function propertiesFor(node: JsonSchemaLike, value: Record<string, unknown>): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
+  const add = (props: unknown) => {
+    if (!props || typeof props !== 'object') return;
+    for (const [k, v] of Object.entries(props as Record<string, unknown>)) if (!(k in merged)) merged[k] = v;
+  };
+  add(node.properties);
+  const branches = branchesOf(node).filter((b) => b.properties && typeof b.properties === 'object');
+  const matches = (b: JsonSchemaLike) =>
+    Object.entries(b.properties as Record<string, unknown>).some(([k, s]) => {
+      const pinned = constOf(s);
+      return pinned !== undefined && value[k] === pinned;
+    });
+  branches.filter(matches).forEach((b) => add(b.properties));
+  branches.forEach((b) => add(b.properties));
+  return merged;
+}
+
+function itemsFor(node: JsonSchemaLike): unknown {
+  return node.items ?? branchesOf(node).find((b) => b.items !== undefined)?.items;
+}
+
+/**
+ * Undoes what normalisation had to do on the way out. Past `MAX_DEPTH`, an
+ * object or list was presented to the agent as "pass as a JSON string", so it
+ * sends `'{"id": "Q1W…", "type": "incident_reference"}'` — and the MCP server,
+ * which never agreed to strings there, rejects it ("Input should be a valid
+ * dictionary"). Wherever the real schema wants a container and cannot take a
+ * string, a JSON string is parsed back into one.
+ *
+ * Deliberately conservative: a field whose schema accepts a string (a request
+ * body that may be YAML) is never touched, and anything that does not parse
+ * is passed through for the server to explain.
+ */
+export function reviveArguments(value: unknown, schema: unknown, depth = 0): unknown {
+  if (!schema || typeof schema !== 'object' || depth > 32) return value;
+  const node = schema as JsonSchemaLike;
+
+  if (typeof value === 'string') {
+    const types = typesOf(node);
+    if (types.has('string') || !(types.has('object') || types.has('array'))) return value;
+    const text = value.trim();
+    if (!text.startsWith('{') && !text.startsWith('[')) return value;
+    try {
+      value = JSON.parse(text);
+    } catch {
+      return value;
+    }
+  }
+
+  if (Array.isArray(value)) {
+    const items = itemsFor(node);
+    return value.map((v) => reviveArguments(v, items, depth + 1));
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const props = propertiesFor(node, record);
+    return Object.fromEntries(
+      Object.entries(record).map(([k, v]) => [k, k in props ? reviveArguments(v, props[k], depth + 1) : v]),
+    );
+  }
+  return value;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normaliseToolParameters } from './schema.js';
+import { normaliseToolParameters, reviveArguments } from './schema.js';
 
 describe('normaliseToolParameters', () => {
   it('passes a simple object schema through', () => {
@@ -349,5 +349,96 @@ describe('unions of object variants (one tool, several operations)', () => {
     const body = (out.properties as Record<string, Node>).body;
     expect(Object.keys(body.properties)).toEqual(['details']);
     expect(body.required).toEqual(['details']);
+  });
+});
+
+describe('reviveArguments — the way back to the server', () => {
+  // The start_workflow branch of PagerDuty's manage_incidents, nested past the
+  // depth where normalisation turns objects into JSON-string fields.
+  const schema = {
+    type: 'object',
+    properties: {
+      request: {
+        oneOf: [
+          {
+            type: 'object',
+            properties: { action: { const: 'add_note' }, incident_id: { type: 'string' }, note: { type: 'string' } },
+          },
+          {
+            type: 'object',
+            properties: {
+              action: { const: 'start_workflow' },
+              workflow_id: { type: 'string' },
+              instance_request: {
+                type: 'object',
+                properties: {
+                  incident_workflow_instance: {
+                    type: 'object',
+                    properties: {
+                      incident: {
+                        type: 'object',
+                        properties: { id: { type: 'string' }, type: { type: 'string' } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+      body: { anyOf: [{ type: 'string' }, { type: 'object' }] },
+      tags: { anyOf: [{ type: 'array', items: { type: 'object', properties: { k: { type: 'string' } } } }, { type: 'null' }] },
+    },
+  };
+
+  it('parses a JSON-string object back where the schema wants an object', () => {
+    const out = reviveArguments(
+      {
+        request: {
+          action: 'start_workflow',
+          workflow_id: 'PWF1',
+          instance_request: {
+            incident_workflow_instance: { incident: '{"id": "Q1WI31HEFG4NVI", "type": "incident_reference"}' },
+          },
+        },
+      },
+      schema,
+    ) as { request: { instance_request: { incident_workflow_instance: { incident: unknown } } } };
+    expect(out.request.instance_request.incident_workflow_instance.incident).toEqual({
+      id: 'Q1WI31HEFG4NVI',
+      type: 'incident_reference',
+    });
+  });
+
+  it('parses a whole stringified container, then keeps walking inside it', () => {
+    const out = reviveArguments(
+      {
+        request: {
+          action: 'start_workflow',
+          instance_request: '{"incident_workflow_instance": {"incident": "{\\"id\\": \\"Q1\\"}"}}',
+        },
+      },
+      schema,
+    ) as { request: { instance_request: { incident_workflow_instance: { incident: unknown } } } };
+    expect(out.request.instance_request.incident_workflow_instance.incident).toEqual({ id: 'Q1' });
+  });
+
+  it('never touches a field that accepts a string, such as a YAML body', () => {
+    const out = reviveArguments({ body: '{"looks": "like json"}' }, schema) as { body: unknown };
+    expect(out.body).toBe('{"looks": "like json"}');
+  });
+
+  it('leaves real strings and unparseable text alone', () => {
+    const out = reviveArguments(
+      { request: { action: 'add_note', incident_id: 'Q1', note: '{not json' } },
+      schema,
+    ) as { request: { note: unknown } };
+    expect(out.request.note).toBe('{not json');
+  });
+
+  it('revives a list sent as a string, through an optional [array, null] union', () => {
+    const out = reviveArguments({ tags: '[{"k": "a"}]' }, schema) as { tags: unknown };
+    expect(out.tags).toEqual([{ k: 'a' }]);
   });
 });

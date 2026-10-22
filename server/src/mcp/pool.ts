@@ -5,6 +5,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { logger } from '../logger.js';
 import type { McpServerConfig } from '../store/schema.js';
 import { qualify, unqualify } from './names.js';
+import { reviveArguments } from '../elevenlabs/schema.js';
 
 const CLIENT_INFO = { name: 'srevoice', version: '1.0.0' };
 const CONNECT_TIMEOUT_MS = 20_000;
@@ -266,7 +267,12 @@ export class McpPool {
       const client = this.connections.get(parsed.serverId)?.client;
       if (!client) throw new Error(`MCP server "${conn.config.label}" is not connected`);
       return withTimeout(
-        client.callTool({ name: entry.remoteName, arguments: args }),
+        // Deep fields reached the agent as JSON strings; hand the server the
+        // objects its schema actually asks for.
+        client.callTool({
+          name: entry.remoteName,
+          arguments: reviveArguments(args, entry.inputSchema) as Record<string, unknown>,
+        }),
         CALL_TIMEOUT_MS,
         `MCP call ${qualifiedName}`,
       );
