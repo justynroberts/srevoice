@@ -179,7 +179,14 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
       )}
       <header className="flex shrink-0 items-center justify-between gap-4 border-b border-line px-5 py-3">
         <div className="flex items-center gap-4">
-          <Avatar activity={activity} muted={isMuted} name={agentName} />
+          <Avatar
+            activity={activity}
+            muted={isMuted}
+            name={agentName}
+            getOutputVolume={getOutputVolume}
+            getInputVolume={getInputVolume}
+            getOutputFrequency={getOutputByteFrequencyData}
+          />
           <div className="hidden h-16 w-px bg-line sm:block" />
           <div className="hidden sm:block">
             <ConnectionSummary statuses={statuses} toolCount={tools.length} />
@@ -187,6 +194,13 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* White ink in dark mode, dark ink in light — the art has no panel. */}
+          <img
+            src={resolved === 'dark' ? '/brand/pagerduty-wordmark.png' : '/brand/pagerduty-wordmark-dark.png'}
+            alt="PagerDuty"
+            draggable={false}
+            className="mr-4 hidden h-[22px] w-auto select-none opacity-85 md:block"
+          />
           {inSession && <MicToggle muted={isMuted} onToggle={toggleMic} />}
           {turns.length > 0 && (
             <Button tone="ghost" onClick={clear} className="hidden sm:inline-flex">

@@ -171,13 +171,23 @@ function rgba(c: readonly number[], a: number): string {
   return `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 }
 
-function VoiceRing({
+/**
+ * Paige as a ring of voice. Full-bleed on the stage; also used small, as her
+ * avatar in the console header, where `radius` is a larger share of a small box.
+ */
+export function VoiceRing({
   activity,
   muted,
   getOutputVolume,
   getInputVolume,
   getOutputFrequency,
-}: Pick<Props, 'activity' | 'muted' | 'getOutputVolume' | 'getInputVolume' | 'getOutputFrequency'>) {
+  radius = RING,
+  moteCount = 90,
+}: Pick<Props, 'activity' | 'muted' | 'getOutputVolume' | 'getInputVolume' | 'getOutputFrequency'> & {
+  /** Ring radius as a share of the canvas's shorter side. */
+  radius?: number;
+  moteCount?: number;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // The draw loop reads these through a ref so it never restarts on a render.
@@ -195,7 +205,7 @@ function VoiceRing({
     let t = 0;
     let level = 0;
     const bands = HARMONICS.map(() => 0);
-    const motes: Mote[] = Array.from({ length: 90 }, () => ({
+    const motes: Mote[] = Array.from({ length: moteCount }, () => ({
       angle: Math.random() * Math.PI * 2,
       drift: Math.random(),
       speed: 0.05 + Math.random() * 0.12,
@@ -265,7 +275,10 @@ function VoiceRing({
       const { width, height } = canvas.getBoundingClientRect();
       const cx = width / 2;
       const cy = height / 2;
-      const R = Math.min(width, height) * RING;
+      const R = Math.min(width, height) * radius;
+      // Glow and spacing are tuned for the stage's ring; a small ring keeps
+      // its proportions instead of drowning in its own bloom.
+      const k = Math.max(0.35, Math.min(1, R / 216));
       const tone = s.muted && s.activity !== 'offline' ? GREY : GREEN;
       const core = s.muted && s.activity !== 'offline' ? GREY : MINT;
       const dim = s.activity === 'offline' ? 0.5 : 1;
@@ -301,7 +314,7 @@ function VoiceRing({
           ctx.beginPath();
           ctx.arc(cx, cy, R * (scale + level * 0.06), 0, Math.PI * 2);
           ctx.setLineDash(dash as unknown as number[]);
-          ctx.lineDashOffset = dir * t * 14;
+          ctx.lineDashOffset = dir * t * 14 * k;
           ctx.lineWidth = 1.5;
           ctx.strokeStyle = rgba(tone, alpha * dim);
           ctx.stroke();
@@ -322,7 +335,7 @@ function VoiceRing({
           const a = m.angle + m.drift * 0.4;
           const alpha = Math.sin(m.drift * Math.PI) * (0.15 + level * 0.85) * dim;
           ctx.beginPath();
-          ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, m.size, 0, Math.PI * 2);
+          ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, m.size * k, 0, Math.PI * 2);
           ctx.fillStyle = rgba(freshMote(m.drift) ? core : tone, alpha);
           ctx.fill();
         }
@@ -354,7 +367,7 @@ function VoiceRing({
         if (line === 0) {
           // The core line glows: a blurred pass, then a crisp one on top.
           ctx.shadowColor = rgba(GREEN, 0.9 * dim);
-          ctx.shadowBlur = 14 + level * 36;
+          ctx.shadowBlur = (14 + level * 36) * k;
           ctx.lineWidth = 2.4;
           ctx.strokeStyle = rgba(core, 0.95 * dim);
           ctx.stroke();
@@ -375,7 +388,7 @@ function VoiceRing({
         ctx.save();
         ctx.lineCap = 'round';
         ctx.shadowColor = rgba(GREEN, 0.9);
-        ctx.shadowBlur = 24;
+        ctx.shadowBlur = 24 * k;
         for (let k = 0; k < 6; k++) {
           ctx.beginPath();
           ctx.arc(cx, cy, R, a - k * 0.12, a - k * 0.12 + 0.14);
