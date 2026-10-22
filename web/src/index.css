@@ -211,3 +211,9 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Full-screen voice mode: the ring radius, shared by the canvas and the
+   layout around it (see RING in Stage.tsx). */
+.stage {
+  --ring-r: 27vmin;
+}

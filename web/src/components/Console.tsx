@@ -1,11 +1,12 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useSreConversation } from '../hooks/useSreConversation';
 import { useTheme } from '../hooks/useTheme';
 import type { ServerStatus } from '../lib/api';
 import { ToolCallCard } from './ToolCallCard';
 import { Transcript } from './Transcript';
 import { Avatar } from './Avatar';
+import { enterBrowserFullscreen, Stage } from './Stage';
 import { Button, Callout, Icon } from './ui';
 
 interface Props {
@@ -95,10 +96,15 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
     clear,
     sendText,
     dismissProblem,
+    getOutputVolume,
+    getInputVolume,
+    getOutputByteFrequencyData,
   } = useSreConversation();
 
   const { choice, resolved, cycle } = useTheme();
   const [draft, setDraft] = useState('');
+  const [staged, setStaged] = useState(false);
+  const exitStage = useCallback(() => setStaged(false), []);
   // Collapsed by default on narrow screens; the choice sticks per browser.
   const [panelOpen, setPanelOpen] = useState(() => {
     const stored = localStorage.getItem(PANEL_KEY);
@@ -156,6 +162,21 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
 
   return (
     <div className="flex h-full flex-col">
+      {staged && (
+        <Stage
+          activity={activity}
+          muted={isMuted}
+          turns={turns}
+          problem={problem}
+          inSession={inSession}
+          agentName={agentName}
+          onToggleSession={() => void (inSession ? stop() : start())}
+          onExit={exitStage}
+          getOutputVolume={getOutputVolume}
+          getInputVolume={getInputVolume}
+          getOutputFrequency={getOutputByteFrequencyData}
+        />
+      )}
       <header className="flex shrink-0 items-center justify-between gap-4 border-b border-line px-5 py-3">
         <div className="flex items-center gap-4">
           <Avatar activity={activity} muted={isMuted} name={agentName} />
@@ -180,6 +201,29 @@ export function Console({ tools, statuses, agentName, onOpenSettings }: Props) {
           >
             {inSession ? <Icon.stop /> : <Icon.play />}
             {inSession ? 'End session' : 'Start session'}
+          </Button>
+          <Button
+            tone="ghost"
+            onClick={() => {
+              // Both first, and synchronously: fullscreen and the mic prompt
+              // are only granted inside the click's user gesture.
+              enterBrowserFullscreen();
+              setStaged(true);
+              if (!inSession) void start();
+            }}
+            size="icon"
+            aria-label="Full-screen voice mode"
+            title="Full-screen voice mode — Esc to leave"
+          >
+            <svg viewBox="0 0 16 16" className="h-[1.15rem] w-[1.15rem]" fill="none" aria-hidden>
+              <circle cx="8" cy="8" r="5.25" stroke="currentColor" strokeWidth="1.4" />
+              <path
+                d="M4.6 8c.7-1.6 1.4-1.6 2.1 0s1.4 1.6 2.1 0 1.4-1.6 2.1 0"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+              />
+            </svg>
           </Button>
           <Button
             tone="ghost"

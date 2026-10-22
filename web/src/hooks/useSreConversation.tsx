@@ -576,6 +576,10 @@ export function useSreConversation() {
     status: conversation.status,
     isMuted: conversation.isMuted,
     setMuted: conversation.setMuted,
+    // Live audio levels, for anything that wants to draw her voice.
+    getOutputVolume: conversation.getOutputVolume,
+    getInputVolume: conversation.getInputVolume,
+    getOutputByteFrequencyData: conversation.getOutputByteFrequencyData,
     start,
     stop,
     clear: state.clear,
