@@ -15,11 +15,12 @@
       // more jarring than the few bytes this costs, so it is inline and blocking.
       (function () {
         try {
+          // Dark unless the operator chose otherwise; "system" must be chosen.
           var stored = localStorage.getItem('srevoice.theme');
           document.documentElement.dataset.theme =
-            stored === 'light' || stored === 'dark'
-              ? stored
-              : window.matchMedia('(prefers-color-scheme: light)').matches
+            stored === 'light'
+              ? 'light'
+              : stored === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches
                 ? 'light'
                 : 'dark';
         } catch (e) {

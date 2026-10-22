@@ -11,7 +11,9 @@ function systemTheme(): ResolvedTheme {
 
 export function storedChoice(): ThemeChoice {
   const raw = localStorage.getItem(KEY);
-  return raw === 'light' || raw === 'dark' || raw === 'system' ? raw : 'system';
+  // Dark is the default: the console is built for dark rooms and big screens,
+  // so following the system is something an operator opts into.
+  return raw === 'light' || raw === 'dark' || raw === 'system' ? raw : 'dark';
 }
 
 /** Applied before first paint by the inline script in index.html, and here on change. */
@@ -22,8 +24,8 @@ export function applyTheme(resolved: ResolvedTheme): void {
 /**
  * Three-way theme choice: follow the system, or pin light or dark.
  *
- * "System" is the default and stays live — an operator whose machine switches
- * at dusk gets the same from the console, without having chosen anything.
+ * Dark is the default. "System" stays live once chosen — an operator whose
+ * machine switches at dusk gets the same from the console.
  */
 export function useTheme() {
   const [choice, setChoice] = useState<ThemeChoice>(() => storedChoice());
@@ -35,8 +37,9 @@ export function useTheme() {
     const next = choice === 'system' ? systemTheme() : choice;
     setResolved(next);
     applyTheme(next);
-    if (choice === 'system') localStorage.removeItem(KEY);
-    else localStorage.setItem(KEY, choice);
+    // Stored even for "system": with dark as the default, an absent value no
+    // longer means "follow the system".
+    localStorage.setItem(KEY, choice);
   }, [choice]);
 
   // Keep following the system while that is the choice.
