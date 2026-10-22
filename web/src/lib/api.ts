@@ -1,5 +1,8 @@
 const TOKEN_KEY = 'srevoice.accessToken';
 
+/** Fired when the server says the session is gone; App swaps to the sign-in screen. */
+export const SIGNED_OUT_EVENT = 'srevoice:signed-out';
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -48,6 +51,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       body = text;
     }
+  }
+
+  // The session ran out mid-use: hand the screen back to sign-in rather than
+  // letting every panel show its own error.
+  if (response.status === 401 && (body as { needs?: string } | null)?.needs === 'login') {
+    window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
   }
 
   if (!response.ok) {

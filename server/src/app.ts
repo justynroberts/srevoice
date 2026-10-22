@@ -13,6 +13,7 @@ import type { AppContext } from './context.js';
 import { safeEqual } from './crypto/seal.js';
 import { env } from './env.js';
 import { logger } from './logger.js';
+import { authConfig, authRoutes, sessionUser } from './routes/auth.js';
 import { healthRoutes } from './routes/health.js';
 import { mcpRoutes } from './routes/mcp.js';
 import { skillRoutes } from './routes/skills.js';
@@ -30,7 +31,9 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
     // Cast keeps the instance on Fastify's default generics — passing a
     // concrete pino Logger otherwise widens every route type downstream.
     loggerInstance: logger as unknown as FastifyBaseLogger,
-    trustProxy: true,
+    // A hop count, not `true`: trusting every X-Forwarded-For entry lets a
+    // client choose its own IP and dodge the per-IP limits.
+    trustProxy: env.TRUST_PROXY_HOPS,
     bodyLimit: 1_048_576,
   });
 
@@ -66,20 +69,31 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
     allowList: (req) => req.url === '/api/health',
   });
 
-  if (env.SREVOICE_ACCESS_TOKEN) {
-    const expected = env.SREVOICE_ACCESS_TOKEN;
+  /**
+   * Every /api route needs a signed-in session or the access token. The token
+   * stays for scripts and for consoles that predate sign-in; either is enough.
+   * The SPA shell and its assets are public — they hold no data, and the
+   * sign-in screen is part of them.
+   */
+  const token = env.SREVOICE_ACCESS_TOKEN;
+  if (authConfig || token) {
     app.addHook('onRequest', async (req, reply) => {
-      if (!req.url.startsWith('/api/') || req.url.startsWith('/api/health')) return;
-      const supplied = req.headers['x-srevoice-token'];
-      if (typeof supplied !== 'string' || !safeEqual(supplied, expected)) {
-        return reply.code(401).send({ error: 'Missing or invalid console access token' });
+      if (!req.url.startsWith('/api/') || req.url.startsWith('/api/health') || req.url.startsWith('/api/auth/')) {
+        return;
       }
-      return;
+      const supplied = req.headers['x-srevoice-token'];
+      if (token && typeof supplied === 'string' && safeEqual(supplied, token)) return;
+      if (authConfig && sessionUser(req)) return;
+      return authConfig
+        ? reply.code(401).send({ error: 'Sign in to use the console.', needs: 'login' })
+        : reply.code(401).send({ error: 'Missing or invalid console access token' });
     });
-  } else {
-    logger.warn('SREVOICE_ACCESS_TOKEN is not set — the console API is open to anyone who can reach it.');
+  }
+  if (!authConfig && !token) {
+    logger.warn('No sign-in or access token configured — the console API is open to anyone who can reach it.');
   }
 
+  await app.register(authRoutes);
   await app.register(healthRoutes(ctx));
   await app.register(settingsRoutes(ctx));
   await app.register(mcpRoutes(ctx));

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isPasswordHash } from './auth/password.js';
 
 /**
  * Only infrastructure lives in env. Every user-supplied credential (ElevenLabs
@@ -28,6 +29,21 @@ const schema = z.object({
    */
   SREVOICE_ACCESS_TOKEN: z.string().optional(),
 
+  /**
+   * Console sign-in. Set both to require a username and password for the whole
+   * console; generate the hash with `npm run hash-password --workspace server`.
+   */
+  SREVOICE_USERNAME: z.string().min(1).optional(),
+  SREVOICE_PASSWORD_HASH: z.string().min(1).optional(),
+
+  /**
+   * How many reverse proxies sit in front of the app. The client address is
+   * taken from that many hops back in X-Forwarded-For — trusting the whole
+   * header would let anyone pick their own IP and walk past every per-IP limit.
+   * Coolify's Traefik is one hop; set 0 when nothing proxies the app.
+   */
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(1),
+
   /** Comma-separated extra CORS origins for local development. */
   CORS_ORIGINS: z.string().optional(),
 });
@@ -41,6 +57,16 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     throw new Error(`Invalid environment: ${detail}`);
   }
   const env = parsed.data;
+
+  // Half a login configuration would leave the console open while looking locked.
+  if (Boolean(env.SREVOICE_USERNAME) !== Boolean(env.SREVOICE_PASSWORD_HASH)) {
+    throw new Error('Set both SREVOICE_USERNAME and SREVOICE_PASSWORD_HASH, or neither.');
+  }
+  if (env.SREVOICE_PASSWORD_HASH && !isPasswordHash(env.SREVOICE_PASSWORD_HASH)) {
+    throw new Error(
+      'SREVOICE_PASSWORD_HASH is not a valid hash. Generate one with: npm run hash-password --workspace server',
+    );
+  }
 
   if (env.NODE_ENV === 'production' && !env.SREVOICE_MASTER_KEY) {
     throw new Error(

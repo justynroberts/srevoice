@@ -3,6 +3,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   api,
+  SIGNED_OUT_EVENT,
   getAccessToken,
   setAccessToken,
   type LlmOption,
@@ -90,6 +91,14 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
   const [drafts, setDrafts] = useState<DraftServer[]>([]);
   const [apiKey, setApiKey] = useState('');
   const [token, setToken] = useState(getAccessToken());
+  const [signedInAs, setSignedInAs] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    api
+      .get<{ required: boolean; username: string | null }>('/api/auth/me')
+      .then((me) => setSignedInAs(me.required ? me.username : null))
+      .catch(() => setSignedInAs(null));
+  }, [open]);
   const [voices, setVoices] = useState<VoiceOption[]>([]);
   const [llms, setLlms] = useState<LlmOption[]>([]);
   const [ttsModels, setTtsModels] = useState<{ id: string; name: string }[]>([]);
@@ -411,6 +420,22 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
                       placeholder="matches SREVOICE_ACCESS_TOKEN"
                       hint="Stored in this browser only. Required when the server sets SREVOICE_ACCESS_TOKEN."
                     />
+                    {signedInAs && (
+                      <div className="flex items-center justify-between gap-3 pt-1">
+                        <p className="text-[12px] text-ink-dim">
+                          Signed in as <span className="text-ink">{signedInAs}</span>
+                        </p>
+                        <Button
+                          tone="ghost"
+                          onClick={async () => {
+                            await api.post('/api/auth/logout').catch(() => undefined);
+                            window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
+                          }}
+                        >
+                          Sign out
+                        </Button>
+                      </div>
+                    )}
                   </section>
                 </Tabs.Content>
 

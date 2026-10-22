@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Console } from './components/Console';
 import { SettingsPanel } from './components/SettingsPanel';
+import { SignIn } from './components/SignIn';
 import { Button, Callout } from './components/ui';
 import { SreConversationProvider } from './hooks/useSreConversation';
-import { api, ApiError, type CatalogueTool, type ServerStatus } from './lib/api';
+import { api, ApiError, SIGNED_OUT_EVENT, type CatalogueTool, type ServerStatus } from './lib/api';
 
 interface Bootstrap {
   tools: string[];
@@ -37,7 +38,36 @@ function sameBootstrap(a: Bootstrap | null, b: Bootstrap): boolean {
   });
 }
 
+/**
+ * Asks the server whether sign-in is required before anything else loads, so a
+ * locked console shows its front door rather than a page of 401s.
+ */
 export default function App() {
+  const [auth, setAuth] = useState<'checking' | 'signed-in' | 'signed-out'>('checking');
+
+  const checkAuth = useCallback(async () => {
+    try {
+      const me = await api.get<{ authenticated: boolean }>('/api/auth/me');
+      setAuth(me.authenticated ? 'signed-in' : 'signed-out');
+    } catch {
+      // An older server without /api/auth: carry on as before.
+      setAuth('signed-in');
+    }
+  }, []);
+
+  useEffect(() => {
+    void checkAuth();
+    const onSignedOut = () => setAuth('signed-out');
+    window.addEventListener(SIGNED_OUT_EVENT, onSignedOut);
+    return () => window.removeEventListener(SIGNED_OUT_EVENT, onSignedOut);
+  }, [checkAuth]);
+
+  if (auth === 'checking') return <div className="h-full bg-black" />;
+  if (auth === 'signed-out') return <SignIn onSignedIn={() => setAuth('signed-in')} />;
+  return <ConsoleShell />;
+}
+
+function ConsoleShell() {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [error, setError] = useState<{ message: string; unauthorised: boolean } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);

@@ -75,13 +75,15 @@ Everything persisted lives in `$DATA_DIR` as separate sealed files, all with the
 
 **A saved system prompt replaces the built-in one entirely.** Provisioning uses `settings.agent.systemPrompt?.trim() || DEFAULT_SYSTEM_PROMPT` (`elevenlabs/prompt.ts`). Edits to `DEFAULT_SYSTEM_PROMPT` do nothing on an install with a saved override — check that first when a prompt fix "doesn't work". Settings reports which default sections an override is missing.
 
+**Sign-in is optional and env-driven.** `SREVOICE_USERNAME` + `SREVOICE_PASSWORD_HASH` (both or neither — startup refuses half) gate every `/api` route behind a signed `srevoice_session` cookie; `SREVOICE_ACCESS_TOKEN` still works alongside it for scripts. The hash uses dots, never `$`, because Coolify's compose interpolation eats `$…`. Sessions are stateless and carry a fingerprint of the password hash, so changing the password is how you revoke them. Brute-force limits key on `req.ip`, which is only honest because `trustProxy` is a hop count (`TRUST_PROXY_HOPS`, default 1 for Traefik) — setting it back to `true` lets clients pick their own IP from `X-Forwarded-For`.
+
 **MCP transport is negotiated per server** — Streamable HTTP, then SSE. The reported error is always the Streamable HTTP one; SSE's failure is appended in parentheses.
 
 ## Stack notes
 
 Fastify 5 with a pino instance cast to `FastifyBaseLogger` in `app.ts` — passing a concrete pino `Logger` widens every route generic downstream and produces pages of unrelated type errors.
 
-React 19 + Vite + Tailwind v4 (`@tailwindcss/vite`, `@theme` block in `index.css`, no `tailwind.config.js`). Radix primitives, Framer Motion, `@elevenlabs/react`. Deliberately PagerDuty's own look, not the house style: PD palette and severity colours, Helvetica-family fallback stack (no webfont), green accent for interactive surfaces only — status colour always means status, never decoration. Dark is the base; light mode overrides only the surface ladder. Avatar art exists per state and per theme.
+React 19 + Vite + Tailwind v4 (`@tailwindcss/vite`, `@theme` block in `index.css`, no `tailwind.config.js`). Radix primitives, Framer Motion, `@elevenlabs/react`. Deliberately PagerDuty's own look, not the house style: PD palette and severity colours, Helvetica-family fallback stack (no webfont), green accent for interactive surfaces only — status colour always means status, never decoration. Dark is the base; light mode overrides only the surface ladder. Paige's avatar is a small `VoiceRing` (from `Stage.tsx`) on a black disc, so it reads in both themes.
 
 Ports 5280 (API) and 5281 (Vite) avoid the crowded 3000/5173 range shared with other `~/work` projects. Docker resources are prefixed `srevoice-`.
 
