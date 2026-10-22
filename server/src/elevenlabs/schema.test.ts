@@ -277,3 +277,77 @@ describe('descriptions are mandatory everywhere', () => {
     });
   });
 });
+
+describe('unions of object variants (one tool, several operations)', () => {
+  // The shape of PagerDuty's manage_incidents: one `request` parameter whose
+  // variants are told apart by `action`.
+  const manageIncidents = {
+    type: 'object',
+    properties: {
+      request: {
+        oneOf: [
+          {
+            type: 'object',
+            properties: {
+              action: { const: 'create', default: 'create', type: 'string' },
+              incident: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
+            },
+            required: ['incident'],
+          },
+          {
+            type: 'object',
+            properties: {
+              action: { const: 'update', default: 'update', type: 'string' },
+              manage_request: {
+                type: 'object',
+                properties: { incident_ids: { type: 'array', items: { type: 'string' } } },
+                required: ['incident_ids'],
+              },
+            },
+            required: ['manage_request'],
+          },
+          {
+            type: 'object',
+            properties: {
+              action: { const: 'add_note', default: 'add_note', type: 'string' },
+              incident_id: { type: 'string' },
+              note: { type: 'string' },
+            },
+            required: ['incident_id', 'note'],
+          },
+        ],
+      },
+    },
+    required: ['request'],
+  };
+
+  type Node = { type: string; description: string; enum?: unknown[]; properties: Record<string, Node>; required: string[] };
+  const request = () => (normaliseToolParameters(manageIncidents).properties as Record<string, Node>).request;
+
+  it('keeps the fields of every variant, not just the first', () => {
+    expect(Object.keys(request().properties)).toEqual(['action', 'incident', 'manage_request', 'incident_id', 'note']);
+    expect(request().properties.manage_request.properties.incident_ids.type).toBe('array');
+  });
+
+  it('turns the discriminator into a required enum of every value', () => {
+    expect(request().properties.action.enum).toEqual(['create', 'update', 'add_note']);
+    expect(request().required).toEqual(['action']);
+  });
+
+  it('says which fields each operation needs', () => {
+    expect(request().description).toContain('action="update" needs manage_request');
+    expect(request().description).toContain('action="add_note" needs incident_id, note');
+  });
+
+  it('leaves the optional [object, null] idiom alone', () => {
+    const out = normaliseToolParameters({
+      type: 'object',
+      properties: {
+        body: { anyOf: [{ type: 'object', properties: { details: { type: 'string' } }, required: ['details'] }, { type: 'null' }] },
+      },
+    });
+    const body = (out.properties as Record<string, Node>).body;
+    expect(Object.keys(body.properties)).toEqual(['details']);
+    expect(body.required).toEqual(['details']);
+  });
+});

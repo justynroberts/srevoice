@@ -19,6 +19,7 @@ interface JsonSchemaLike {
   oneOf?: unknown;
   allOf?: unknown;
   default?: unknown;
+  const?: unknown;
 }
 
 /** Every concrete type a union offers, in declaration order, deduplicated. */
@@ -103,6 +104,114 @@ function unwrapBranch(
   return undefined;
 }
 
+/**
+ * A union of two or more object shapes — `{oneOf: [{action: "create", incident},
+ * {action: "update", manage_request}, …]}` — is how MCP servers spell a tool
+ * with several operations behind one parameter.
+ *
+ * ElevenLabs takes a single object schema, and keeping only the first variant
+ * (as for an optional `[object, null]`) hides every other operation: the agent
+ * cannot send `manage_request` because, as far as it knows, there is no such
+ * field. Asked to update an incident it sends `{action: "update"}` alone, and
+ * the server rejects it.
+ *
+ * So the variants are merged instead: every field from every variant, the
+ * discriminator's values combined into one enum, and a line in the description
+ * saying which fields each value needs.
+ */
+function objectVariants(node: JsonSchemaLike): JsonSchemaLike[] {
+  if (node.properties && typeof node.properties === 'object') return [];
+  const found: JsonSchemaLike[] = [];
+  for (const key of ['oneOf', 'anyOf'] as const) {
+    const branches = node[key];
+    if (!Array.isArray(branches)) continue;
+    for (const branch of branches) {
+      if (!branch || typeof branch !== 'object') continue;
+      const candidate = branch as JsonSchemaLike;
+      const isObject = candidate.type === 'object' || candidate.type === undefined;
+      if (isObject && candidate.properties && typeof candidate.properties === 'object') found.push(candidate);
+    }
+  }
+  return found.length >= 2 ? found : [];
+}
+
+/** The first union branch that carries an object's properties. */
+function objectBranch(node: JsonSchemaLike): JsonSchemaLike | undefined {
+  for (const key of ['anyOf', 'oneOf', 'allOf'] as const) {
+    const branches = node[key];
+    if (!Array.isArray(branches)) continue;
+    for (const branch of branches) {
+      if (branch && typeof branch === 'object') {
+        const candidate = branch as JsonSchemaLike;
+        if (candidate.type === 'object' && candidate.properties !== undefined) return candidate;
+      }
+    }
+  }
+  return undefined;
+}
+
+/** The single value a node pins itself to, if any — `const`, or a one-value enum. */
+function constOf(input: unknown): string | number | boolean | undefined {
+  if (!input || typeof input !== 'object') return undefined;
+  const node = input as JsonSchemaLike;
+  const value = node.const !== undefined ? node.const : Array.isArray(node.enum) && node.enum.length === 1 ? node.enum[0] : undefined;
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? value : undefined;
+}
+
+function requiredOf(node: JsonSchemaLike): string[] {
+  return Array.isArray(node.required) ? node.required.filter((r): r is string => typeof r === 'string') : [];
+}
+
+interface MergedVariants {
+  properties: Record<string, unknown>;
+  required: string[];
+  guide?: string;
+}
+
+function mergeVariants(variants: JsonSchemaLike[]): MergedVariants {
+  const props = variants.map((v) => v.properties as Record<string, unknown>);
+
+  // The field every variant pins to a distinct constant — usually `action`.
+  const discriminator = Object.keys(props[0]).find((key) => {
+    const values = props.map((p) => constOf(p[key]));
+    return values.every((v) => v !== undefined) && new Set(values).size === values.length;
+  });
+
+  const properties: Record<string, unknown> = {};
+  if (discriminator) {
+    const values = props.map((p) => constOf(p[discriminator]) as string | number | boolean);
+    const first = props[0][discriminator] as JsonSchemaLike;
+    properties[discriminator] = {
+      type: typeof values[0] === 'number' ? 'number' : typeof values[0] === 'boolean' ? 'boolean' : 'string',
+      description:
+        typeof first.description === 'string' && first.description.trim()
+          ? first.description
+          : `Which operation to perform: ${values.join(', ')}.`,
+      enum: values,
+    };
+  }
+  for (const p of props) {
+    for (const [key, value] of Object.entries(p)) {
+      if (key !== discriminator && !(key in properties)) properties[key] = value;
+    }
+  }
+
+  // Only what every variant needs can be required of all of them.
+  const required = requiredOf(variants[0]).filter((r) => variants.every((v) => requiredOf(v).includes(r)));
+  if (discriminator && !required.includes(discriminator)) required.unshift(discriminator);
+
+  const guide = discriminator
+    ? variants
+        .map((v) => {
+          const needs = requiredOf(v).filter((r) => r !== discriminator);
+          return `${discriminator}="${String(constOf((v.properties as Record<string, unknown>)[discriminator]))}"${needs.length ? ` needs ${needs.join(', ')}` : ''}`;
+        })
+        .join('; ')
+    : undefined;
+
+  return { properties, required, guide };
+}
+
 /** `escalation_policy_id` → "Escalation policy id" — a usable last-resort description. */
 function humanise(name: string): string {
   const words = name.replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim();
@@ -136,6 +245,9 @@ function normaliseNode(input: unknown, depth: number, name = ''): Record<string,
     const note = ' (Send as a string — serialise JSON yourself, or pass raw text such as YAML verbatim.)';
     out.description = `${(out.description as string).slice(0, MAX_DESCRIPTION - note.length)}${note}`;
   }
+  // A `const` is a one-value enum, and says so far more plainly to the agent.
+  const pinned = constOf(node);
+  if (pinned !== undefined && !Array.isArray(node.enum)) out.enum = [pinned];
   if (Array.isArray(node.enum) && node.enum.length > 0) {
     out.enum = node.enum.filter((v) => ['string', 'number', 'boolean'].includes(typeof v)).slice(0, 50);
     if ((out.enum as unknown[]).length === 0) delete out.enum;
@@ -152,8 +264,10 @@ function normaliseNode(input: unknown, depth: number, name = ''): Record<string,
   }
 
   if (type === 'object') {
+    const variants = objectVariants(node);
+    const merged = variants.length ? mergeVariants(variants) : undefined;
     // `properties` can also sit inside an anyOf branch, same as `items`.
-    const props = (node.properties ?? unwrapBranch(node, 'object', 'properties')) as
+    const props = (merged?.properties ?? node.properties ?? unwrapBranch(node, 'object', 'properties')) as
       | Record<string, unknown>
       | undefined;
     const properties: Record<string, unknown> = {};
@@ -163,9 +277,16 @@ function normaliseNode(input: unknown, depth: number, name = ''): Record<string,
       }
     }
     out.properties = properties;
-    out.required = Array.isArray(node.required)
-      ? node.required.filter((r): r is string => typeof r === 'string' && r in properties)
-      : [];
+    // An optional object (`[object, null]`) keeps its `required` in the branch,
+    // next to its properties; reading only the wrapper would drop it.
+    const branch = !merged && !node.properties ? objectBranch(node) : undefined;
+    out.required = (merged ? merged.required : requiredOf(branch ?? node)).filter((r) => r in properties);
+    if (merged?.guide) {
+      // The guide is what makes the merged shape usable, so it is the original
+      // description that gives way to fit the budget, never the guide.
+      const guide = ` Send only the fields for the chosen operation: ${merged.guide}.`;
+      out.description = `${(out.description as string).slice(0, Math.max(0, MAX_DESCRIPTION - guide.length))}${guide}`.trim();
+    }
   }
 
   if (type === 'array') {
