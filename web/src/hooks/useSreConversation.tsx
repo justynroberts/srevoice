@@ -16,6 +16,7 @@ import {
   type SessionStart,
   type ToolCallResponse,
 } from '../lib/api';
+import { openMic } from '../lib/mic';
 
 export interface Turn {
   id: string;
@@ -310,6 +311,8 @@ export function useSreConversation() {
    * recording indicator — which quite reasonably reads as "it didn't end".
    */
   const micRef = useRef<MediaStream | null>(null);
+  /** The microphone this conversation opened with; reused on a resume. */
+  const inputDeviceRef = useRef('');
   /** Consecutive failed resumes, reset by a successful connect or a real stop. */
   const resumeAttemptsRef = useRef(0);
 
@@ -384,7 +387,12 @@ export function useSreConversation() {
     setPhase('requesting-mic');
 
     try {
-      micRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // The chosen device, or the default if it has been unplugged. The id that
+      // actually opened is what the SDK is told to use, so the permission
+      // prompt and the conversation always mean the same microphone.
+      const mic = await openMic();
+      micRef.current = mic.stream;
+      inputDeviceRef.current = mic.deviceId;
     } catch {
       setPhase('idle');
       setProblem({
@@ -411,6 +419,7 @@ export function useSreConversation() {
       // agent to permit it, which provisioning sets.
       conversation.startSession({
         signedUrl: session.signedUrl,
+        ...(inputDeviceRef.current ? { inputDeviceId: inputDeviceRef.current } : {}),
         ...(introduced ? { overrides: { agent: { firstMessage: SHORT_GREETING } } } : {}),
       });
       introduced = true;
@@ -501,6 +510,7 @@ export function useSreConversation() {
             // herself is the loudest possible way to announce a wobble.
             conversation.startSession({
               signedUrl: session.signedUrl,
+              ...(inputDeviceRef.current ? { inputDeviceId: inputDeviceRef.current } : {}),
               overrides: { agent: { firstMessage: '' } },
             });
             addTurn('system', attempt === 0 ? 'Connection dropped — reconnecting…' : 'Still reconnecting…');

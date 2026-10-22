@@ -14,6 +14,7 @@ import {
   type SettingsView,
   type VoiceOption,
 } from '../lib/api';
+import { MicCheck } from './MicCheck';
 import { SkillsEditor } from './SkillsEditor';
 import {
   blankDraft,
@@ -414,6 +415,8 @@ export function SettingsPanel({ open, onOpenChange, statuses, onChanged }: Props
                 </Tabs.Content>
 
                 <Tabs.Content value="voice" className="space-y-4 focus:outline-none">
+                  <MicCheck />
+                  <div className="h-px bg-line" />
                   <Select
                     label="Voice"
                     value={settings.voice.voiceId}
