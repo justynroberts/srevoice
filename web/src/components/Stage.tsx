@@ -139,13 +139,28 @@ function exitBrowserFullscreen(): void {
 /* The ring                                                                  */
 /* ------------------------------------------------------------------------ */
 
-const GREEN = [6, 172, 56] as const;
-const GREEN_DEEP = [6, 70, 30] as const;
-const MINT = [120, 255, 160] as const;
-
 /** A few motes start bright, so the drift reads as light rather than dust. */
 const freshMote = (drift: number) => drift < 0.15;
 const GREY = [69, 78, 86] as const;
+
+/**
+ * Who is talking, readable from colour alone: PagerDuty green while she
+ * speaks (and thinks), a cooler sea-green while she listens to you. Close enough to
+ * stay one family, far enough apart to tell at a glance — even on the small
+ * header ring, where wave height alone is hard to judge.
+ */
+type Rgb = readonly [number, number, number];
+interface Palette {
+  tone: Rgb;
+  core: Rgb;
+  deep: Rgb;
+}
+const SPEAKING: Palette = { tone: [6, 172, 56], core: [120, 255, 160], deep: [6, 70, 30] };
+const LISTENING: Palette = { tone: [8, 176, 128], core: [135, 250, 210], deep: [4, 66, 50] };
+const MUTED: Palette = { tone: GREY, core: GREY, deep: GREY };
+
+/** How long a colour change takes to settle — a blend, not a jump. */
+const PALETTE_EASE_S = 0.12;
 
 /** Integer harmonics keep every wave a closed loop around the circle. */
 const HARMONICS = [
@@ -211,6 +226,7 @@ export function VoiceRing({
     let t = 0;
     let level = 0;
     const bands = HARMONICS.map(() => 0);
+    const pal = { tone: [...SPEAKING.tone], core: [...SPEAKING.core], deep: [...SPEAKING.deep] };
     const motes: Mote[] = Array.from({ length: moteCount }, () => ({
       angle: Math.random() * Math.PI * 2,
       drift: Math.random(),
@@ -287,8 +303,14 @@ export function VoiceRing({
       // Glow and spacing are tuned for the stage's ring; a small ring keeps
       // its proportions instead of drowning in its own bloom.
       const k = Math.max(0.35, Math.min(1, R / 216));
-      const tone = s.muted && s.activity !== 'offline' ? GREY : GREEN;
-      const core = s.muted && s.activity !== 'offline' ? GREY : MINT;
+      const palette = s.muted && s.activity !== 'offline' ? MUTED : s.activity === 'listening' ? LISTENING : SPEAKING;
+      const blend = still ? 1 : 1 - Math.exp(-dt / PALETTE_EASE_S);
+      for (const key of ['tone', 'core', 'deep'] as const) {
+        for (let c = 0; c < 3; c++) pal[key][c] += (palette[key][c] - pal[key][c]) * blend;
+      }
+      const tone = pal.tone;
+      const core = pal.core;
+      const deep = pal.deep;
       const dim = s.activity === 'offline' ? 0.5 : 1;
 
       ctx.clearRect(0, 0, width, height);
@@ -297,15 +319,15 @@ export function VoiceRing({
       // Two blooms: a wide, faint one that fills the room, and a tighter one
       // hugging the ring. Both swell with her voice.
       const wide = ctx.createRadialGradient(cx, cy, R * 0.6, cx, cy, R * 2.6);
-      wide.addColorStop(0, rgba(s.muted ? GREY : GREEN_DEEP, (0.1 + level * 0.25) * dim));
-      wide.addColorStop(1, rgba(GREEN_DEEP, 0));
+      wide.addColorStop(0, rgba(deep, (0.1 + level * 0.25) * dim));
+      wide.addColorStop(1, rgba(deep, 0));
       ctx.fillStyle = wide;
       ctx.fillRect(0, 0, width, height);
 
       const tight = ctx.createRadialGradient(cx, cy, R * 0.7, cx, cy, R * 1.35);
-      tight.addColorStop(0, rgba(GREEN_DEEP, 0));
-      tight.addColorStop(0.42, rgba(s.muted ? GREY : GREEN_DEEP, (0.22 + level * 0.55) * dim));
-      tight.addColorStop(1, rgba(GREEN_DEEP, 0));
+      tight.addColorStop(0, rgba(deep, 0));
+      tight.addColorStop(0.42, rgba(deep, (0.22 + level * 0.55) * dim));
+      tight.addColorStop(1, rgba(deep, 0));
       ctx.fillStyle = tight;
       ctx.fillRect(0, 0, width, height);
 
@@ -374,7 +396,7 @@ export function VoiceRing({
         ctx.closePath();
         if (line === 0) {
           // The core line glows: a blurred pass, then a crisp one on top.
-          ctx.shadowColor = rgba(GREEN, 0.9 * dim);
+          ctx.shadowColor = rgba(tone, 0.9 * dim);
           ctx.shadowBlur = (14 + level * 36) * k;
           ctx.lineWidth = 2.4;
           ctx.strokeStyle = rgba(core, 0.95 * dim);
@@ -395,7 +417,7 @@ export function VoiceRing({
         const a = t * (s.activity === 'connecting' ? 3.2 : 1.6);
         ctx.save();
         ctx.lineCap = 'round';
-        ctx.shadowColor = rgba(GREEN, 0.9);
+        ctx.shadowColor = rgba(tone, 0.9);
         ctx.shadowBlur = 24 * k;
         for (let k = 0; k < 6; k++) {
           ctx.beginPath();
