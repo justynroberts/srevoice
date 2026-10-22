@@ -183,10 +183,16 @@ export function VoiceRing({
   getOutputFrequency,
   radius = RING,
   moteCount = 90,
+  gain = 1,
 }: Pick<Props, 'activity' | 'muted' | 'getOutputVolume' | 'getInputVolume' | 'getOutputFrequency'> & {
   /** Ring radius as a share of the canvas's shorter side. */
   radius?: number;
   moteCount?: number;
+  /**
+   * Multiplies how far the voice moves the waves. A small ring needs more
+   * swing, relative to its size, for the movement to read at a glance.
+   */
+  gain?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -245,7 +251,9 @@ export function VoiceRing({
       // What the ring should be doing right now, before smoothing.
       let target: number;
       if (speaking) target = Math.min(1, read(s.getOutputVolume) * 1.8);
-      else if (listening) target = Math.min(0.5, read(s.getInputVolume) * 1.2);
+      // Mic levels run far lower than her voice, so they get more help to read
+      // as "I can hear you" rather than as noise.
+      else if (listening) target = Math.min(0.6, read(s.getInputVolume) * 2.6);
       else if (s.activity === 'thinking') target = 0.1 + 0.04 * Math.sin(t * 2.2);
       else if (s.activity === 'connecting') target = 0.06;
       else target = 0.025;
@@ -344,7 +352,7 @@ export function VoiceRing({
       // The waves. Amplitude is the voice; under reduced motion it stays flat
       // and only the light changes. Drawn back to front so the bright core line
       // sits on top of the softer echoes.
-      const amp = still ? 0 : R * (0.02 + level * 0.16);
+      const amp = still ? 0 : R * (0.02 + level * 0.16 * gain);
       const steps = 420;
       for (let line = LINES - 1; line >= 0; line--) {
         const falloff = 1 - line * 0.09;

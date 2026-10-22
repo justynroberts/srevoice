@@ -35,8 +35,9 @@ export function Avatar({
           getOutputVolume={getOutputVolume}
           getInputVolume={getInputVolume}
           getOutputFrequency={getOutputFrequency}
-          radius={0.3}
+          radius={0.28}
           moteCount={28}
+          gain={2.6}
         />
       </div>
 
