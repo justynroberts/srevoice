@@ -10,7 +10,9 @@ npm run dev                      # API :5280 + Vite :5281 concurrently
 npm run build                    # server tsc, then web tsc -b && vite build
 npm test                         # vitest, both workspaces
 npm run typecheck                # both workspaces
+npm run lint                     # eslint over server/src and web/src
 npm run docker:up                # single container, needs SREVOICE_MASTER_KEY in .env
+                                 # SREVOICE_ACCESS_TOKEN gates /api behind x-srevoice-token
 
 npm test --workspace web         # frontend only (jsdom + testing-library)
 npm test --workspace server -- src/crypto/seal.test.ts        # one file
@@ -22,7 +24,7 @@ npm run test:watch --workspace server
 
 ## What this is
 
-A voice console for PagerDuty MCP servers. ElevenLabs Agents owns the realtime voice loop (STT, LLM, TTS over WebSocket); this app owns the data path.
+A voice console for PagerDuty MCP servers (plus Rundeck through them). The agent persona is **Paige**. ElevenLabs Agents owns the realtime voice loop (STT, LLM, TTS over WebSocket); this app owns the data path.
 
 ## The one architectural decision everything follows from
 
@@ -45,8 +47,13 @@ POST /api/provision ──▶ pool.catalogue() ──▶ ElevenLabs client tools
                                           └─▶ agent (tool_ids + prompt)
 
 POST /api/session/start ──▶ signed WebSocket URL ──▶ browser
-browser client tool ──▶ POST /api/mcp/call ──▶ pool.call() ──▶ {speech, display}
+browser client tool ──▶ POST /api/mcp/call ──▶ guard ──▶ pool.call() ──▶ {speech, display}
+                                   └─ > SOFT_BUDGET_MS ──▶ PendingCalls ──▶ GET /api/mcp/pending (browser polls)
 ```
+
+Everything persisted lives in `$DATA_DIR` as separate sealed files, all with the same atomic-write pattern: `settings`, `memory` (Paige's notes), `skills` (on-demand instructions), `authored` (jobs the agent wrote).
+
+**Built-in tools masquerade as MCP servers.** `memory__*` and `skill__*` (`server/src/memory/tools.ts`) are provisioned and routed exactly like MCP tools so naming, `unqualify` and UI grouping work unchanged. `screen__show` and `session__end` are handled entirely in the browser (`useSreConversation.tsx`) and never reach the server.
 
 ## Things that will bite you
 
@@ -62,21 +69,27 @@ browser client tool ──▶ POST /api/mcp/call ──▶ pool.call() ──▶
 
 **Losing `SREVOICE_MASTER_KEY` orphans every stored credential.** The store throws rather than silently starting empty. Production startup refuses without it.
 
+**Some refusals are code, not prompt.** `server/src/mcp/guard.ts` refuses running a Rundeck job the agent authored itself (tracked in `AuthoredJobStore`) and ad-hoc command/script runs; workflows stay allowed. The agent has overridden prompt rules before, so don't move this into the system prompt. Refusals return `isError: false` so Paige explains rather than reports a broken tool.
+
+**Slow tool calls become pending, not failures.** ElevenLabs waits at most ~2 minutes and interruptions end turns sooner. `routes/mcp.ts` races the call against `SOFT_BUDGET_MS`; overruns answer `pending: true`, keep running, and are collected via `/api/mcp/pending`. Pending results are scoped to `sessionId` (a resumed session keeps its id; a new one must never receive the old one's results), and `answeredInline` prevents the same result arriving twice. `followup.ts` reuses this path to re-check a remediation workflow ~90s later.
+
+**A saved system prompt replaces the built-in one entirely.** Provisioning uses `settings.agent.systemPrompt?.trim() || DEFAULT_SYSTEM_PROMPT` (`elevenlabs/prompt.ts`). Edits to `DEFAULT_SYSTEM_PROMPT` do nothing on an install with a saved override — check that first when a prompt fix "doesn't work". Settings reports which default sections an override is missing.
+
 **MCP transport is negotiated per server** — Streamable HTTP, then SSE. The reported error is always the Streamable HTTP one; SSE's failure is appended in parentheses.
 
 ## Stack notes
 
 Fastify 5 with a pino instance cast to `FastifyBaseLogger` in `app.ts` — passing a concrete pino `Logger` widens every route generic downstream and produces pages of unrelated type errors.
 
-React 19 + Vite + Tailwind v4 (`@tailwindcss/vite`, `@theme` block in `index.css`, no `tailwind.config.js`). Radix primitives, Framer Motion. Dark Uber-style palette, Space Grotesk / Spline Sans Mono, single green accent — status colour always means status, never decoration.
+React 19 + Vite + Tailwind v4 (`@tailwindcss/vite`, `@theme` block in `index.css`, no `tailwind.config.js`). Radix primitives, Framer Motion, `@elevenlabs/react`. Deliberately PagerDuty's own look, not the house style: PD palette and severity colours, Helvetica-family fallback stack (no webfont), green accent for interactive surfaces only — status colour always means status, never decoration. Dark is the base; light mode overrides only the surface ladder. Avatar art exists per state and per theme.
 
 Ports 5280 (API) and 5281 (Vite) avoid the crowded 3000/5173 range shared with other `~/work` projects. Docker resources are prefixed `srevoice-`.
 
 ## Testing
 
-Server: pure logic only, by design: `seal`, `SettingsStore`, tool-name qualification, result rendering, JSON Schema normalisation. Network paths (`McpPool`, `ElevenLabsClient`) are not mocked — verify those against a real endpoint. `pool.sync()` against a real URL with a bad token is a fast, honest check that the transport stack works.
+Server: pure logic only, by design: `seal`, the sealed stores, tool-name qualification, result rendering, JSON Schema normalisation, prompt building, provisioning helpers, the guard, pending calls and follow-ups. Network paths (`McpPool`, `ElevenLabsClient`) are not mocked — verify those against a real endpoint. `pool.sync()` against a real URL with a bad token is a fast, honest check that the transport stack works.
 
-Web: `RichText` only, under jsdom. The results panel renders third-party tool
+Web: `RichText` and `lib/inspect`, under jsdom. The results panel renders third-party tool
 output, so the test that raw HTML never reaches the DOM is load-bearing — and
 `SpokenText` exists precisely because parsing the transcript as Markdown mangles
 identifiers like `checkout_api_v2`.
