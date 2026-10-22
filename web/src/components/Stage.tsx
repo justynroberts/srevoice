@@ -85,6 +85,13 @@ export function Stage({
         className="stage-orb absolute left-1/2 top-1/2 aspect-square w-[calc(var(--ring-r)*2)] -translate-x-1/2 -translate-y-1/2 rounded-full focus:outline-none"
       />
 
+      <img
+        src="/brand/pagerduty-wordmark.png"
+        alt="PagerDuty"
+        draggable={false}
+        className="pointer-events-none absolute bottom-[4vmin] left-[4vmin] h-[clamp(18px,2.6vmin,30px)] w-auto select-none opacity-80"
+      />
+
       <div className="absolute inset-x-0 bottom-0 top-[calc(50%+var(--ring-r)+2vh)] flex flex-col items-center">
         <Subtitles turns={turns} problem={problem} idle={activity === 'offline'} agentName={agentName} />
       </div>
