@@ -215,5 +215,5 @@
 /* Full-screen voice mode: the ring radius, shared by the canvas and the
    layout around it (see RING in Stage.tsx). */
 .stage {
-  --ring-r: 27vmin;
+  --ring-r: 20vmin;
 }

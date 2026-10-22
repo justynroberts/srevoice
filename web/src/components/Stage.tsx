@@ -158,7 +158,7 @@ const HARMONICS = [
 const LINES = 8;
 
 /** Ring radius as a share of the shorter screen side; mirrored by `--ring-r`. */
-const RING = 0.27;
+const RING = 0.2;
 
 interface Mote {
   angle: number;
