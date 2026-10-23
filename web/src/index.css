@@ -217,3 +217,24 @@
 .stage {
   --ring-r: 20vmin;
 }
+
+.stage-logo {
+  bottom: 4vmin;
+  left: 4vmin;
+}
+
+/* The phone stage (see PHONE_RING in Stage.tsx). Tapping is the only input, so
+   double-tap zoom, pull-to-refresh and the grey tap flash all go. */
+.stage-phone {
+  --ring-r: 34vmin;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.stage-phone .stage-logo {
+  bottom: max(4vmin, env(safe-area-inset-bottom));
+  left: max(4vmin, env(safe-area-inset-left));
+}

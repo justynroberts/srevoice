@@ -85,6 +85,8 @@ Fastify 5 with a pino instance cast to `FastifyBaseLogger` in `app.ts` — passi
 
 React 19 + Vite + Tailwind v4 (`@tailwindcss/vite`, `@theme` block in `index.css`, no `tailwind.config.js`). Radix primitives, Framer Motion, `@elevenlabs/react`. Deliberately PagerDuty's own look, not the house style: PD palette and severity colours, Helvetica-family fallback stack (no webfont), green accent for interactive surfaces only — status colour always means status, never decoration. Dark is the base; light mode overrides only the surface ladder. Paige's avatar is a small `VoiceRing` (from `Stage.tsx`) on a black disc, so it reads in both themes.
 
+Phones get `PhoneStage` instead of the console: just the stage, started by a tap, because iOS grants no audio or microphone without a gesture. `wantsPhoneView` decides; `/m` forces it on any device, `?console` forces the console on a phone. iPhone Safari never grants page fullscreen, so edge-to-edge there means Add to Home Screen (`public/manifest.webmanifest` plus the apple meta tags).
+
 Ports 5280 (API) and 5281 (Vite) avoid the crowded 3000/5173 range shared with other `~/work` projects. Docker resources are prefixed `srevoice-`.
 
 ## Testing

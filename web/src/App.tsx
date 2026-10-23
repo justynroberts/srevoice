@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Console } from './components/Console';
+import { PhoneStage, wantsPhoneView } from './components/PhoneStage';
 import { SettingsPanel } from './components/SettingsPanel';
 import { SignIn } from './components/SignIn';
 import { Button, Callout } from './components/ui';
@@ -64,10 +65,10 @@ export default function App() {
 
   if (auth === 'checking') return <div className="h-full bg-black" />;
   if (auth === 'signed-out') return <SignIn onSignedIn={() => setAuth('signed-in')} />;
-  return <ConsoleShell />;
+  return <ConsoleShell phone={wantsPhoneView()} />;
 }
 
-function ConsoleShell() {
+function ConsoleShell({ phone }: { phone: boolean }) {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [error, setError] = useState<{ message: string; unauthorised: boolean } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -114,7 +115,8 @@ function ConsoleShell() {
             : String(err),
         unauthorised,
       });
-      if (unauthorised && !promptedForToken.current) {
+      // The phone has no Settings to open; it shows the message instead.
+      if (unauthorised && !phone && !promptedForToken.current) {
         promptedForToken.current = true;
         setSettingsOpen(true);
       }
@@ -122,7 +124,7 @@ function ConsoleShell() {
       // session stays unavailable until this resolves.
       setBoot((prev) => prev ?? { tools: [], statuses: [], agentName: 'Paige' });
     }
-  }, []);
+  }, [phone]);
 
   useEffect(() => {
     void refresh(true);
@@ -135,6 +137,15 @@ function ConsoleShell() {
     }, 30_000);
     return () => clearInterval(interval);
   }, [refresh, settingsOpen]);
+
+  if (phone) {
+    if (!boot) return <div className="h-full bg-black" />;
+    return (
+      <SreConversationProvider key={boot.tools.join('|')} toolNames={boot.tools}>
+        <PhoneStage agentName={boot.agentName} problem={error?.message ?? null} />
+      </SreConversationProvider>
+    );
+  }
 
   if (!boot) {
     return (

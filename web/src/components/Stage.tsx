@@ -14,7 +14,15 @@ interface Props {
   getOutputVolume: () => number;
   getInputVolume: () => number;
   getOutputFrequency: () => Uint8Array;
+  /**
+   * The phone layout: a bigger ring (a phone's short side is small), safe-area
+   * insets, and no double-tap zoom or pull-to-refresh under the thumb.
+   */
+  phone?: boolean;
 }
+
+/** Ring radius on a phone, as a share of the shorter side; mirrored by `.stage-phone`. */
+const PHONE_RING = 0.34;
 
 /**
  * Full-screen presence mode: black, Paige as a ring of voice in the middle,
@@ -37,6 +45,7 @@ export function Stage({
   getOutputVolume,
   getInputVolume,
   getOutputFrequency,
+  phone = false,
 }: Props) {
   const orbRef = useRef<HTMLButtonElement>(null);
 
@@ -65,7 +74,7 @@ export function Stage({
   const label = inSession ? `End the session with ${agentName}` : `Start a session with ${agentName}`;
 
   return (
-    <div className="stage fixed inset-0 z-50 overflow-hidden bg-black">
+    <div className={`stage ${phone ? 'stage-phone' : ''} fixed inset-0 z-50 overflow-hidden bg-black`}>
       {/* Full-bleed, so the bloom and the drifting light are never clipped. */}
       <VoiceRing
         activity={activity}
@@ -73,6 +82,8 @@ export function Stage({
         getOutputVolume={getOutputVolume}
         getInputVolume={getInputVolume}
         getOutputFrequency={getOutputFrequency}
+        radius={phone ? PHONE_RING : RING}
+        moteCount={phone ? 60 : 90}
       />
 
       {/* The hit area is the ring itself, dead centre on the screen. */}
@@ -89,11 +100,20 @@ export function Stage({
         src="/brand/pagerduty-wordmark.png"
         alt="PagerDuty"
         draggable={false}
-        className="pointer-events-none absolute bottom-[4vmin] left-[4vmin] h-[clamp(18px,2.6vmin,30px)] w-auto select-none opacity-80"
+        className="stage-logo pointer-events-none absolute h-[clamp(18px,2.6vmin,30px)] w-auto select-none opacity-80"
       />
 
       <div className="absolute inset-x-0 bottom-0 top-[calc(50%+var(--ring-r)+2vh)] flex flex-col items-center">
-        <Subtitles turns={turns} problem={problem} idle={activity === 'offline'} agentName={agentName} />
+        <Subtitles
+          turns={turns}
+          problem={problem}
+          idle={activity === 'offline'}
+          hint={
+            turns.length > 0
+              ? `Touch the ring to talk to ${agentName} again`
+              : `Touch the ring to talk to ${agentName}`
+          }
+        />
       </div>
     </div>
   );
@@ -482,12 +502,12 @@ function Subtitles({
   turns,
   problem,
   idle,
-  agentName,
+  hint,
 }: {
   turns: Turn[];
   problem: SessionProblem | null;
   idle: boolean;
-  agentName: string;
+  hint: string;
 }) {
   const [cue, setCue] = useState<Cue | null>(null);
   const queue = useRef<string[]>([]);
@@ -563,7 +583,7 @@ function Subtitles({
   // A problem is the one thing worth interrupting her subtitles for.
   const shown: Cue | null = problem
     ? { id: `problem-${problem.message}`, text: problem.message, tone: 'problem', ms: 0 }
-    : cue ?? (idle ? { id: 'hint', text: `Touch the ring to talk to ${agentName} again`, tone: 'hint', ms: 0 } : null);
+    : cue ?? (idle ? { id: 'hint', text: hint, tone: 'hint', ms: 0 } : null);
 
   return (
     <>

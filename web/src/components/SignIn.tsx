@@ -52,7 +52,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   };
 
   const field =
-    'w-full rounded-[4px] border border-[#2a3136] bg-black px-3.5 py-3 text-[15px] text-[#eef3f2] placeholder:text-[#56636a] transition-colors focus:border-accent focus:outline-none disabled:opacity-50';
+    'w-full rounded-[4px] border border-[#2a3136] bg-black px-3.5 py-3 text-[16px] text-[#eef3f2] placeholder:text-[#56636a] transition-colors focus:border-accent focus:outline-none disabled:opacity-50';
 
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center overflow-hidden bg-black px-6">

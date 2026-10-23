@@ -1,0 +1,10 @@
+{
+  "name": "Paige — SRE Console",
+  "short_name": "Paige",
+  "start_url": "/m",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#000000",
+  "theme_color": "#000000"
+}
